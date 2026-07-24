@@ -1,312 +1,399 @@
-const { Telegraf, Markup } = require("telegraf");
-const { BOT_TOKEN, ADMIN_ID } = require("./config");
-const http = require("http");
-const fs = require("fs");
+const TelegramBot = require('node-telegram-bot-api');
+const http = require('http');
+const fs = require('fs');
+const cron = require('node-cron'); // অটোমেটিক টাইমারের জন্য যুক্ত করা হলো
 
-const bot = new Telegraf(BOT_TOKEN);
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token, { polling: true });
 
-let channels = [];
-let scheduledPosts = [];
+const TARGET_CHANNEL = '@VipYonoFreeCode';
 
-// Load channel data
-if (fs.existsSync("channels.json")) {
-  try {
-    channels = JSON.parse(fs.readFileSync("channels.json", "utf8"));
-  } catch (e) {
-    channels = [];
-  }
-}
+const POSTS_FILE = 'posts.json';
+const USERS_FILE = 'users.json';
 
-// Load schedule data
-if (fs.existsSync("schedule.json")) {
-  try {
-    scheduledPosts = JSON.parse(fs.readFileSync("schedule.json", "utf8"));
-  } catch (e) {
-    scheduledPosts = [];
-  }
-}
-
-// State management variables
-let waitingChannel = {};
-let waitingRemove = {};
-let postStep = {};
-let editStep = {};
-let editData = {};
-let scheduleStep = {};
-let scheduleData = {};
-
-// Main Menu Keyboard Layout
-const mainKeyboard = Markup.keyboard([
-  ["📝 Create Post", "⏰ Schedule Post"],
-  ["📋 Channel List", "✏️ Edit Post"],
-  ["➕ Add Channel", "❌ Remove Channel"],
-  ["🏠 Home", "⚙️ Settings"]
-]).resize();
-
-function saveChannels() {
-  fs.writeFileSync("channels.json", JSON.stringify(channels, null, 2));
-}
-
-function saveSchedule() {
-  fs.writeFileSync("schedule.json", JSON.stringify(scheduledPosts, null, 2));
-}
-
-function resetStates(id) {
-  waitingChannel[id] = false;
-  waitingRemove[id] = false;
-  postStep[id] = null;
-  editStep[id] = null;
-  editData[id] = null;
-  scheduleStep[id] = null;
-  scheduleData[id] = null;
-}
-
-// 🤖 AUTOMATIC HARDCODED BUTTON PARSER (Top: Blue, Bottom: Green)
-function processPost(caption) {
-  if (!caption) return { text: "", replyMarkup: null };
-  
-  let cleanedText = caption;
-  
-  // Clean raw URLs if pasted by mistake
-  const rawUrlRegex = /(?<!href=['"=\s])(https?:\/\/[^\s<>'"\)]+)/g;
-  const urls = caption.match(rawUrlRegex) || [];
-  
-  if (urls.length > 0) {
-    const uniqueUrls = [...new Set(urls)];
-    uniqueUrls.forEach((url) => {
-      const sampleUrl = url.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      const removeLineRegex = new RegExp(`^.*${sampleUrl}.*$`, 'gm');
-      cleanedText = cleanedText.replace(removeLineRegex, '');
-    });
-  }
-  
-  // Clean up excessive blank lines
-  cleanedText = cleanedText.replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
-  
-  // 🎨 BUTTON COLORS: style "primary" (Blue like screenshot), style "success" (Green like screenshot)
-  const inlineKeyboard = [
-    [
-      { text: "🎰 𝗡𝗲𝘄 𝗚𝗮𝗺𝗲 𝟰𝟱", url: "https://t.me/VipYonoFreeCode/3783", style: "primary" },
-      { text: "𝗧𝗼𝘁𝗮𝗹 𝗚𝗮𝗺𝗲 𝟳𝟬 🎰", url: "https://t.me/AllYonoRummyCode/138", style: "primary" }
-    ],
-    [
-      { text: "👆 𝗔𝗟𝗟 𝗚𝗔𝗠𝗘𝗦 👆", url: "https://t.me/TotalYonoCode/3", style: "success" },
-      { text: "​🤖 𝗣𝗿𝗼𝗺𝗼 𝗖𝗼𝗱𝗲 𝗕𝗼𝘁 🤖", url: "https://t.me/spin_crush_bot", style: "success" }
-    ]
-  ];
-  
-  const replyMarkup = { inline_keyboard: inlineKeyboard };
-  return { text: cleanedText, replyMarkup };
-}
-
-
-// Admin verification middleware
-bot.use(async (ctx, next) => {
-  if (!ctx.from) return;
-  if (ctx.chat.type !== "private") return;
-  if (ctx.from.id != ADMIN_ID) return ctx.reply("⛔ Access Denied");
-  return next();
-});
-
-bot.start((ctx) => {
-  resetStates(ctx.from.id);
-  ctx.reply("🏠 Telegram Control Panel", mainKeyboard);
-});
-
-bot.hears("🏠 Home", (ctx) => {
-  resetStates(ctx.from.id);
-  ctx.reply("🏠 Telegram Control Panel", mainKeyboard);
-});
-
-bot.hears("➕ Add Channel", (ctx) => {
-  const id = ctx.from.id;
-  resetStates(id);
-  waitingChannel[id] = true;
-  ctx.reply("📢 Send Channel Username\n\nExample:\n@yourchannel");
-});
-
-bot.hears("📋 Channel List", (ctx) => {
-  resetStates(ctx.from.id);
-  if (channels.length === 0) return ctx.reply("❌ No Channel Added");
-  let text = "📋 Channel List\n\n";
-  channels.forEach((ch, i) => { text += `${i + 1}. ${ch}\n`; });
-  ctx.reply(text);
-});
-
-bot.hears("❌ Remove Channel", (ctx) => {
-  const id = ctx.from.id;
-  resetStates(id);
-  waitingRemove[id] = true;
-  if (channels.length === 0) {
-    waitingRemove[id] = false;
-    return ctx.reply("❌ No Channel Found");
-  }
-  let text = "Send Channel Username to Remove:\n\n";
-  channels.forEach((ch) => { text += `${ch}\n`; });
-  ctx.reply(text);
-});
-
-bot.hears("📝 Create Post", (ctx) => {
-  const id = ctx.from.id;
-  resetStates(id);
-  postStep[id] = "waiting_post";
-  ctx.reply("📷 **Send Photo with HTML Caption (Instant Post)**");
-});
-
-bot.hears("⏰ Schedule Post", (ctx) => {
-  const id = ctx.from.id;
-  resetStates(id);
-  scheduleStep[id] = "waiting_post";
-  ctx.reply("⏰ **Send Photo with HTML Caption (Schedule Post)**");
-});
-
-bot.hears("✏️ Edit Post", (ctx) => {
-  const id = ctx.from.id;
-  resetStates(id);
-  editStep[id] = "waiting_channel";
-  ctx.reply("✏️ Send the Username of the channel to edit post:");
-});
-
-bot.hears("⚙️ Settings", (ctx) => {
-  resetStates(ctx.from.id);
-  ctx.reply(`⚙️ Control Panel\n\n📢 Total Channels: ${channels.length}\n⏰ Scheduled Posts: ${scheduledPosts.length}`);
-});
-
-bot.on("photo", async (ctx) => {
-  const id = ctx.from.id;
-
-  if (postStep[id] === "waiting_post") {
-    const photos = ctx.message.photo;
-    const file = photos[photos.length - 1]; 
-    const caption = ctx.message.caption || "";
-
-    postStep[id] = null;
-    if (channels.length === 0) return ctx.reply("❌ No channels found.");
-
-    const { text: cleanedCaption, replyMarkup } = processPost(caption);
-    let success = 0, failed = 0;
-
-    for (const channel of channels) {
-      try {
-        await bot.telegram.sendPhoto(channel, file.file_id, {
-          caption: cleanedCaption,
-          parse_mode: "HTML",
-          reply_markup: replyMarkup
-        });
-        success++;
-      } catch (err) { failed++; }
-    }
-    return ctx.reply(`✅ Post Completed\n\nSuccess: ${success}\nFailed: ${failed}`);
-  }
-
-  if (scheduleStep[id] === "waiting_post") {
-    const photos = ctx.message.photo;
-    scheduleData[id] = { file_id: photos[photos.length - 1].file_id, caption: ctx.message.caption || "" };
-    scheduleStep[id] = "waiting_time";
-    return ctx.reply("📷 Photo Received! Send schedule duration in minutes or YYYY-MM-DD HH:MM:");
-  }
-});
-
-bot.on("text", async (ctx) => {
-  const id = ctx.from.id;
-  const text = ctx.message.text.trim();
-
-  if (waitingChannel[id]) {
-    waitingChannel[id] = false;
-    if (!text.startsWith("@")) return ctx.reply("❌ Invalid Username");
-    if (channels.includes(text)) return ctx.reply("⚠️ Already Added");
-    channels.push(text);
-    saveChannels();
-    return ctx.reply("✅ Channel Added");
-  }
-
-  if (waitingRemove[id]) {
-    waitingRemove[id] = false;
-    const index = channels.indexOf(text);
-    if (index === -1) return ctx.reply("❌ Channel Not Found");
-    channels.splice(index, 1);
-    saveChannels();
-    return ctx.reply("✅ Channel Removed");
-  }
-
-  if (editStep[id] === "waiting_channel") {
-    if (!text.startsWith("@")) return ctx.reply("❌ Invalid Username.");
-    editData[id] = { channel: text };
-    editStep[id] = "waiting_msg_id";
-    return ctx.reply("Send the Message ID:");
-  }
-
-  if (editStep[id] === "waiting_msg_id") {
-    let msgId = text.includes("/") ? text.split("/").pop() : text;
-    msgId = parseInt(msgId);
-    if (isNaN(msgId)) return ctx.reply("❌ Invalid ID.");
-    editData[id].messageId = msgId;
-    editStep[id] = "waiting_new_text";
-    return ctx.reply("Send the new HTML Caption:");
-  }
-
-  if (editStep[id] === "waiting_new_text") {
-    const { channel, messageId } = editData[id];
-    editStep[id] = null;
+let postDatabase = {};
+if (fs.existsSync(POSTS_FILE)) {
     try {
-      await bot.telegram.editMessageCaption(channel, messageId, null, text, { parse_mode: "HTML" });
-      ctx.reply("✅ Post Edited!");
-    } catch (err) {
-      ctx.reply(`❌ Failed to edit: ${err.message}`);
+        postDatabase = JSON.parse(fs.readFileSync(POSTS_FILE, 'utf8'));
+    } catch (e) {
+        postDatabase = {};
     }
-    editData[id] = null;
-    return;
-  }
+}
 
-  if (scheduleStep[id] === "waiting_time") {
-    let targetTime;
-    if (/^\d+$/.test(text)) {
-      targetTime = new Date(Date.now() + parseInt(text) * 60 * 1000);
+function savePosts() {
+    fs.writeFileSync(POSTS_FILE, JSON.stringify(postDatabase, null, 2));
+}
+
+let botUsers = [];
+if (fs.existsSync(USERS_FILE)) {
+    try {
+        botUsers = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    } catch (e) {
+        botUsers = [];
+    }
+}
+
+function saveUsers() {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(botUsers, null, 2));
+}
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running successfully!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
+
+// স্মার্ট ফরম্যাটিং ফাংশন (অপরিবর্তিত ও পারফেক্ট)
+function smartFormatPost(text, entities) {
+    if (!text) return '';
+
+    if (text.includes('All Yono Apps') && !text.toLowerCase().includes('code')) {
+        return text; 
+    }
+
+    let downloadUrl = '';
+    if (entities && entities.length > 0) {
+        entities.forEach(entity => {
+            if (entity.type === 'text_link' && entity.url) {
+                if (!entity.url.includes('t.me') && !entity.url.includes('telegram')) {
+                    downloadUrl = entity.url;
+                }
+            } else if (entity.type === 'url') {
+                let extractedUrl = text.substring(entity.offset, entity.offset + entity.length);
+                if (extractedUrl && !extractedUrl.includes('t.me') && !extractedUrl.includes('telegram')) {
+                    downloadUrl = extractedUrl;
+                }
+            }
+        });
+    }
+
+    if (!downloadUrl) {
+        let urlMatch = text.match(/(https?:\/\/[^\s<]+)/g);
+        if (urlMatch) {
+            for (let u of urlMatch) {
+                if (!u.includes('t.me') && !u.includes('telegram')) {
+                    downloadUrl = u;
+                    break;
+                }
+            }
+        }
+    }
+
+    let lines = text.split('\n');
+    let formattedLines = [];
+    let hashtags = [];
+    let nonEmtpyCount = 0;
+
+    lines.forEach(line => {
+        let trimmed = line.trim();
+        if (!trimmed) return;
+        let lower = trimmed.toLowerCase();
+
+        if (trimmed.startsWith('#')) {
+            let tags = trimmed.match(/#\w+/g);
+            if (tags) {
+                tags.forEach(t => {
+                    if (!hashtags.includes(t)) hashtags.push(t);
+                });
+            }
+            return;
+        }
+
+        nonEmtpyCount++;
+
+        // সর্বউপরের টাইটেল লাইন বোল্ড
+        if (nonEmtpyCount === 1) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(`<b>${cleanLine}</b>`);
+            return;
+        }
+
+        // প্রমো কোড কপি-অন-ট্যাপ
+        if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join this channel') && !lower.includes('never miss')) {
+            let parts = trimmed.split(/➔|->|➜|:/);
+            if (parts.length > 1) {
+                let label = parts[0].trim();
+                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+                let safeCode = rawCode.replace(/\./g, '.\u200B');
+                formattedLines.push(`<b>${label}</b>: <code>${safeCode}</code>`);
+            } else {
+                let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
+                formattedLines.push(`<code>${safeTrimmed}</code>`);
+            }
+        } 
+        // ডাউনলোড লিংক
+        else if (lower.includes('download now') || lower.includes('game link') || lower.includes('link')) {
+            if (downloadUrl) {
+                if (lower.includes('download now')) {
+                    let replacedLine = trimmed.replace(/download now/gi, `<a href="${downloadUrl}"><b>Download Now</b></a>`);
+                    formattedLines.push(replacedLine);
+                } else {
+                    formattedLines.push(`<b>🎰 GAME LINK </b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                }
+            } else {
+                formattedLines.push(trimmed);
+            }
+        } 
+        // মিনিমাম উইথড্রল বোল্ড
+        else if (lower.includes('minimum') || lower.includes('withdrawal')) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(`<b>${cleanLine}</b>`);
+        } 
+        // নিউ ইউজার ও চ্যানেল জয়েন মেসেজ Quote Box
+        else if (
+            lower.includes('signup bonus') || 
+            lower.includes('new users') || 
+            lower.includes('join this channel') || 
+            lower.includes('pin this channel') ||
+            lower.includes('never miss') ||
+            lower.includes('important promo code') ||
+            trimmed.startsWith('🔥') ||
+            trimmed.startsWith('🎁')
+        ) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(`<blockquote>${cleanLine}</blockquote>`);
+        } 
+        else {
+            formattedLines.push(trimmed);
+        }
+    });
+
+    if (hashtags.length > 0) {
+        formattedLines.push(`<blockquote><tg-spoiler>${hashtags.join(' ')}</tg-spoiler></blockquote>`);
+    }
+
+    return formattedLines.join('\n\n');
+}
+
+// অটোমেটিক ব্রডকাস্ট ফাংশন
+function broadcastPostToAllUsers(post) {
+    if (!botUsers || botUsers.length === 0) return;
+
+    console.log(`Broadcasting new post to ${botUsers.length} users...`);
+
+    const options = { 
+        parse_mode: "HTML",
+        disable_web_page_preview: true 
+    };
+    if (post.replyMarkup) {
+        options.reply_markup = post.replyMarkup;
+    }
+
+    botUsers.forEach((userId, index) => {
+        setTimeout(() => {
+            if (post.photo) {
+                bot.sendPhoto(userId, post.photo, { caption: post.text, ...options }).catch(err => {
+                    console.error(`Failed to send to ${userId}:`, err.message);
+                });
+            } else if (post.text) {
+                bot.sendMessage(userId, post.text, options).catch(err => {
+                    console.error(`Failed to send to ${userId}:`, err.message);
+                });
+            }
+        }, index * 40); 
+    });
+}
+
+function savePostContent(msg) {
+    let rawText = msg.caption || msg.text || '';
+    let entities = msg.caption_entities || msg.entities || [];
+    
+    let text = smartFormatPost(rawText, entities);
+    if (!text) text = rawText;
+    
+    const photo = msg.photo ? msg.photo[msg.photo.length - 1].file_id : null;
+    const replyMarkup = msg.reply_markup || null;
+    
+    let postContent = null;
+
+    if (text || photo) {
+        postContent = {
+            text: text,
+            photo: photo,
+            replyMarkup: replyMarkup || null,
+            timestamp: Date.now() // নতুন টাইমস্ট্যাম্প যুক্ত করা হলো
+        };
+
+        if (!postDatabase['all_posts']) {
+            postDatabase['all_posts'] = [];
+        }
+        const globalExists = postDatabase['all_posts'].some(p => p.text === text);
+        if (!globalExists) {
+            postDatabase['all_posts'].push(postContent);
+            savePosts();
+        }
+    }
+
+    return postContent;
+}
+
+bot.on('channel_post', (msg) => {
+    const chatUsername = msg.chat.username ? `@${msg.chat.username.toLowerCase()}` : '';
+    if (chatUsername === TARGET_CHANNEL.toLowerCase()) {
+        const newPost = savePostContent(msg);
+        if (newPost) {
+            broadcastPostToAllUsers(newPost);
+        }
+    }
+});
+
+function restorePostsToChannel(chatId) {
+    if (postDatabase['all_posts'] && postDatabase['all_posts'].length > 0) {
+        bot.sendMessage(chatId, `Restoring ${postDatabase['all_posts'].length} posts safely with intact links...`);
+        
+        postDatabase['all_posts'].forEach((post, index) => {
+            setTimeout(() => {
+                const options = { 
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true 
+                };
+                if (post.replyMarkup) {
+                    options.reply_markup = post.replyMarkup;
+                }
+
+                if (post.photo) {
+                    bot.sendPhoto(TARGET_CHANNEL, post.photo, { 
+                        caption: post.text, 
+                        ...options 
+                    }).catch(err => {
+                        bot.sendPhoto(TARGET_CHANNEL, post.photo, { caption: post.text, reply_markup: post.replyMarkup }).catch(e => {});
+                    });
+                } else if (post.text) {
+                    bot.sendMessage(TARGET_CHANNEL, post.text, options).catch(err => {
+                        bot.sendMessage(TARGET_CHANNEL, post.text, { reply_markup: post.replyMarkup }).catch(e => {});
+                    });
+                }
+            }, index * 1200);
+        });
     } else {
-      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
-      if (match) {
-        targetTime = new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00+06:00`);
-      }
+        bot.sendMessage(chatId, "No saved posts found in database to restore!");
+    }
+}
+
+// নতুন ফিল্টারড ও নিখুঁত সার্চ ফাংশন
+function getRecentPostsForQuery(userQuery) {
+    if (!postDatabase['all_posts'] || postDatabase['all_posts'].length === 0) {
+        return [];
     }
 
-    if (!targetTime || isNaN(targetTime.getTime())) return ctx.reply("❌ Invalid time format!");
+    const cleanQuery = userQuery.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (cleanQuery.length < 2) return [];
 
-    scheduledPosts.push({ file_id: scheduleData[id].file_id, caption: scheduleData[id].caption, time: targetTime.toISOString() });
-    saveSchedule();
-    scheduleStep[id] = null;
-    scheduleData[id] = null;
-    return ctx.reply(`✅ Post Scheduled for: ${targetTime.toLocaleString()}`);
-  }
-});
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
 
-// Background Scheduler
-setInterval(async () => {
-  if (scheduledPosts.length === 0) return;
-  const now = new Date();
-  let hasChanges = false;
+    // হুবহু সার্চ করা গেম ম্যাচ করার ফিল্টার
+    let matched = postDatabase['all_posts'].filter(post => {
+        if (!post.text) return false;
+        let cleanText = post.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return cleanText.includes(cleanQuery);
+    });
 
-  for (let i = scheduledPosts.length - 1; i >= 0; i--) {
-    const post = scheduledPosts[i];
-    if (new Date(post.time) <= now) {
-      const { text: cleanedCaption, replyMarkup } = processPost(post.caption);
-      for (const channel of channels) {
-        try {
-          await bot.telegram.sendPhoto(channel, post.file_id, { caption: cleanedCaption, parse_mode: "HTML", reply_markup: replyMarkup });
-        } catch (e) {}
-      }
-      scheduledPosts.splice(i, 1);
-      hasChanges = true;
+    if (matched.length === 0) return [];
+
+    // সাম্প্রতিক সময় অনুযায়ী সাজানো
+    matched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // শুধুমাত্র ২৪ ঘণ্টার মধ্যে থাকা পোস্ট ফিল্টার করা
+    let recent24h = matched.filter(p => p.timestamp && p.timestamp >= twentyFourHoursAgo);
+
+    if (recent24h.length > 0) {
+        return recent24h.slice(0, 2); // সর্বোচ্চ ১-২ টি নতুন পোস্ট
+    } else {
+        // টাইমস্ট্যাম্প ছাড়া থাকলে শুধু ১টি লেটেস্ট পোস্ট দেখাবে
+        let latest = matched[0];
+        if (!latest.timestamp) {
+            return [latest];
+        }
+        return []; // ২৪ ঘণ্টার পুরনো পোস্ট হলে দেখাবে না
     }
-  }
-  if (hasChanges) saveSchedule();
-}, 30000);
+}
 
-bot.launch().then(() => {
-  console.log("✅ Bot launched with Blue & Green Custom Grid successfully.");
+bot.on('message', (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    if (!botUsers.includes(chatId)) {
+        botUsers.push(chatId);
+        saveUsers();
+    }
+
+    if (text) {
+        if (text.startsWith('/start')) {
+            const welcomeText = `<b>Welcome to the Official Promo Code Bot!</b>\n\n<b>⚠️ Notice:</b> Here you will get Only Yono Promo Code. No other games or unrelated content will be provided here.\n\n🚀 All updates and promo codes for any new Yono games will be available here first!\n\n📢 <b>How to get codes instantly:</b>\n• Whenever you join, you will automatically receive new posts.\n• Need codes right now? Just type and search the game name in the chat. The bot will instantly send you the available promo codes right away!`;
+            bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML" });
+        } else if (text.startsWith('/restore')) {
+            restorePostsToChannel(chatId);
+        } else {
+            let foundPosts = getRecentPostsForQuery(text);
+
+            if (foundPosts.length > 0) {
+                foundPosts.forEach(post => {
+                    sendPostToUser(chatId, post);
+                });
+            } else {
+                // ইউজারদের অল ইওনো গেম সার্চে এনগেজ রাখার জন্য আল্ট্রা-আকর্ষণীয় মেসেজ
+                const notFoundMessage = `🔥 <b>EXCLUSIVE CODE IS GENERATING...</b> 🔥\n\n` +
+                    `⚡ The VIP promo code for <b>"${text.trim()}"</b> is currently being refreshed and will drop very soon!\n\n` +
+                    `💡 <b>DON'T JUST WAIT! DO THIS RIGHT NOW:</b>\n` +
+                    `• 🎮 Don't wait for just this one game! Search for <b>ANY OTHER YONO GAME</b> in the chat right now!\n` +
+                    `• 💰 Hundreds of live promo codes for other Yono games are active & ready to claim!\n` +
+                    `• 🔔 Keep notifications <b>ON</b> so you don't miss the fast drop.\n` +
+                    `• ⏳ Search for <b>"${text.trim()}"</b> again in <b>2 to 5 minutes</b> to grab it first!\n\n` +
+                    `👑 <i>This is your #1 Official Hub for <b>ALL YONO GAMES & ALL VIP CODES!</b> 🚀</i>`;
+
+                bot.sendMessage(chatId, notFoundMessage, { parse_mode: "HTML" });
+            }
+        }
+    }
 });
 
-const PORT = process.env.PORT || 10000;
-http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot Engine Online");
-}).listen(PORT);
+function sendPostToUser(userId, post) {
+    const options = { 
+        parse_mode: "HTML",
+        disable_web_page_preview: true 
+    };
+    if (post.replyMarkup) {
+        options.reply_markup = post.replyMarkup;
+    }
+
+    if (post.photo) {
+        bot.sendPhoto(userId, post.photo, { caption: post.text, ...options }).catch(err => {
+            bot.sendPhoto(userId, post.photo, { caption: post.text, reply_markup: post.replyMarkup }).catch(e => {});
+        });
+    } else if (post.text) {
+        bot.sendMessage(userId, post.text, options).catch(err => {
+            bot.sendMessage(userId, post.text, { reply_markup: post.replyMarkup }).catch(e => {});
+        });
+    }
+}
+
+// ==========================================
+// 🔄 প্রতি ৭ দিনে স্বয়ংক্রিয় অটো-মেসেজ লজিক
+// ==========================================
+const weeklyMessage = `⚡ <b>WEEKLY VIP BONUS ALERT!</b> ⚡\n\n` +
+    `🎁 <b>New Yono Promo Codes Are Now Live!</b>\n\n` +
+    `Hey Gamer! Hundreds of fresh & active promo codes for <b>ALL YONO GAMES</b> have just been updated! Don't let your free bonuses expire! 💰\n\n` +
+    `🔥 <b>WHAT TO DO RIGHT NOW:</b>\n` +
+    `• 🎮 Type & search <b>ANY Yono Game Name</b> in this chat right now!\n` +
+    `• 💎 Claim your daily signup & deposit promo codes instantly!\n` +
+    `• 🔔 Keep your notifications <b>ON</b> so you never miss a fast-claim code drop!\n\n` +
+    `👑 <i>Type your favorite game name below and grab your free code now! 🚀</i>`;
+
+// প্রতি রবিবার সকাল ১০টায় অটোমেটিক ইউজারদের কাছে মেসেজ যাবে ('0 10 * * 0')
+cron.schedule('0 10 * * 0', () => {
+    console.log('Sending weekly promo code message to all users...');
+    if (botUsers && botUsers.length > 0) {
+        botUsers.forEach((userId, index) => {
+            setTimeout(() => {
+                bot.sendMessage(userId, weeklyMessage, { parse_mode: 'HTML', disable_web_page_preview: true })
+                    .catch(err => console.log(`User ${userId} blocked the bot or failed.`));
+            }, index * 40); // স্মুথ ডেলিভারির জন্য টাইমিং
+        });
+    }
+});
+
+console.log("Bot running with strict game search, 24h filter, weekly auto-message & English fallback message...");
