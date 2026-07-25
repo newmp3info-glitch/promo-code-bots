@@ -6,14 +6,14 @@ const cron = require('node-cron');
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 🎯 আপনার চ্যানেলের সঠিক ইউজারনেম
-const TARGET_CHANNEL = '@vipYonoFreeCode';
+// Target channel username
+const TARGET_CHANNEL = '@VipYonoFreeCode';
 
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
 
 // ==========================================
-// 🛡️ ডাটাবেজ সেফটি লজিক
+// Database Safety & Persistence Logic
 // ==========================================
 if (!fs.existsSync(POSTS_FILE)) {
     fs.writeFileSync(POSTS_FILE, JSON.stringify({ all_posts: [] }, null, 2));
@@ -47,7 +47,7 @@ function saveUsers() {
 }
 
 // ==========================================
-// 🧹 স্ক্রিনে অনলি ১টি মেসেজ রাখার ট্র্যাকার
+// Single-Message Screen Manager
 // ==========================================
 let lastBotMessage = {}; 
 
@@ -92,7 +92,7 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-// 🎨 স্মার্ট ফরম্যাটিং ফাংশন
+// Smart formatting function
 function smartFormatPost(text, entities) {
     if (!text) return '';
 
@@ -246,7 +246,7 @@ function savePostContent(msg) {
         if (!globalExists) {
             postDatabase.all_posts.push(postContent);
             savePosts();
-            return true; // নতুন পোস্ট সেভ হলে true রিটার্ন করবে
+            return true;
         }
     }
 
@@ -291,7 +291,7 @@ function getLatestPostForQuery(userQuery) {
 }
 
 // ==========================================
-// 🚀 মেসেজ হ্যান্ডলার ও সেভ লজিক
+// Message Handler & Secure Forward Logic
 // ==========================================
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -302,17 +302,22 @@ bot.on('message', async (msg) => {
         saveUsers();
     }
 
-    // 📥 ফরওয়ার্ড করা পোস্ট সরাসরি ডাটাবেজে সেভ করার লজিক
-    if (msg.forward_from_chat || msg.forward_date) {
-        let isSaved = savePostContent(msg);
-        if (isSaved) {
-            await bot.sendMessage(chatId, `✅ <b>পোস্টটি ডাটাবেজে সফলভাবে ব্যাকআপ সেভ হয়েছে!</b>\n📊 মোট সেভ হওয়া পোস্ট: <b>${postDatabase.all_posts.length}টি</b>`, { parse_mode: "HTML" });
-        } else {
-            await bot.sendMessage(chatId, `⚠️ <b>এই পোস্টটি ডাটাবেজে আগেই ছিল অথবা খালি!</b>`, { parse_mode: "HTML" });
+    // Security check: Only save forwarded messages from TARGET_CHANNEL
+    if (msg.forward_from_chat) {
+        const forwardedChannelUsername = msg.forward_from_chat.username ? `@${msg.forward_from_chat.username.toLowerCase()}` : '';
+
+        if (forwardedChannelUsername === TARGET_CHANNEL.toLowerCase()) {
+            let isSaved = savePostContent(msg);
+            if (isSaved) {
+                await bot.sendMessage(chatId, `✅ <b>Post successfully saved to database!</b>\n📊 Total saved posts: <b>${postDatabase.all_posts.length}</b>`, { parse_mode: "HTML" });
+            } else {
+                await bot.sendMessage(chatId, `⚠️ <b>This post already exists in the database or is empty!</b>`, { parse_mode: "HTML" });
+            }
+            return;
         }
-        return; // ফরওয়ার্ড সেভ হওয়ার পর মেসেজ সার্চে যাবে না
     }
 
+    // Normal message / Search handling
     if (text) {
         try { await bot.deleteMessage(chatId, msg.message_id); } catch (e) {}
 
@@ -361,4 +366,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with secret forward-to-save feature for admin!");
+console.log("Bot running with strict target-channel security filter and pure English system messages!");
