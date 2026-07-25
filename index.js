@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const http = require('http');
 const fs = require('fs');
-const cron = require('node-cron'); // অটোমেটিক টাইমারের জন্য যুক্ত করা হলো
+const cron = require('node-cron');
 
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
@@ -11,6 +11,9 @@ const TARGET_CHANNEL = '@VipYonoFreeCode';
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
 
+// ==========================================
+// 🛡️ ডাটাবেজ সেফটি লজিক (অপরিবর্তিত ও সুরক্ষিত)
+// ==========================================
 let postDatabase = {};
 if (fs.existsSync(POSTS_FILE)) {
     try {
@@ -37,6 +40,32 @@ function saveUsers() {
     fs.writeFileSync(USERS_FILE, JSON.stringify(botUsers, null, 2));
 }
 
+// ==========================================
+// 🧹 স্ক্রিন ক্লিনআপ ট্র্যাকার (ভিডিওর মতো করার জন্য)
+// ==========================================
+let lastBotMessages = {}; // প্রতি ইউজারের আগের মেসেজ ট্র্যাক করার জন্য
+
+function trackBotMessage(chatId, messageId) {
+    if (!lastBotMessages[chatId]) {
+        lastBotMessages[chatId] = [];
+    }
+    lastBotMessages[chatId].push(messageId);
+}
+
+async function deletePreviousBotMessages(chatId) {
+    if (lastBotMessages[chatId] && lastBotMessages[chatId].length > 0) {
+        for (let msgId of lastBotMessages[chatId]) {
+            try {
+                await bot.deleteMessage(chatId, msgId);
+            } catch (e) {
+                // মেসেজ আগে থেকে ডিলিট থাকলে বা পুরোনো হলে স্কিপ করবে
+            }
+        }
+        lastBotMessages[chatId] = [];
+    }
+}
+
+// Web Server Setup
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot is running successfully!\n');
@@ -47,7 +76,7 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-// স্মার্ট ফরম্যাটিং ফাংশন (অপরিবর্তিত ও পারফেক্ট)
+// স্মার্ট ফরম্যাটিং ফাংশন (অপরিবর্তিত)
 function smartFormatPost(text, entities) {
     if (!text) return '';
 
@@ -105,14 +134,12 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
-        // সর্বউপরের টাইটেল লাইন বোল্ড
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // প্রমো কোড কপি-অন-ট্যাপ
         if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join this channel') && !lower.includes('never miss')) {
             let parts = trimmed.split(/➔|->|➜|:/);
             if (parts.length > 1) {
@@ -125,7 +152,6 @@ function smartFormatPost(text, entities) {
                 formattedLines.push(`<code>${safeTrimmed}</code>`);
             }
         } 
-        // ডাউনলোড লিংক
         else if (lower.includes('download now') || lower.includes('game link') || lower.includes('link')) {
             if (downloadUrl) {
                 if (lower.includes('download now')) {
@@ -138,12 +164,10 @@ function smartFormatPost(text, entities) {
                 formattedLines.push(trimmed);
             }
         } 
-        // মিনিমাম উইথড্রল বোল্ড
         else if (lower.includes('minimum') || lower.includes('withdrawal')) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
         } 
-        // নিউ ইউজার ও চ্যানেল জয়েন মেসেজ Quote Box
         else if (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
@@ -169,7 +193,7 @@ function smartFormatPost(text, entities) {
     return formattedLines.join('\n\n');
 }
 
-// অটোমেটিক ব্রডকাস্ট ফাংশন
+// অটোমেটিক ব্রডকাস্ট ফাংশন (অপরিবর্তিত)
 function broadcastPostToAllUsers(post) {
     if (!botUsers || botUsers.length === 0) return;
 
@@ -215,7 +239,7 @@ function savePostContent(msg) {
             text: text,
             photo: photo,
             replyMarkup: replyMarkup || null,
-            timestamp: Date.now() // নতুন টাইমস্ট্যাম্প যুক্ত করা হলো
+            timestamp: Date.now()
         };
 
         if (!postDatabase['all_posts']) {
@@ -274,7 +298,7 @@ function restorePostsToChannel(chatId) {
     }
 }
 
-// নতুন ফিল্টারড ও নিখুঁত সার্চ ফাংশন
+// সার্চ ফিল্টার (অপরিবর্তিত)
 function getRecentPostsForQuery(userQuery) {
     if (!postDatabase['all_posts'] || postDatabase['all_posts'].length === 0) {
         return [];
@@ -285,7 +309,6 @@ function getRecentPostsForQuery(userQuery) {
 
     const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
 
-    // হুবহু সার্চ করা গেম ম্যাচ করার ফিল্টার
     let matched = postDatabase['all_posts'].filter(post => {
         if (!post.text) return false;
         let cleanText = post.text.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -294,25 +317,25 @@ function getRecentPostsForQuery(userQuery) {
 
     if (matched.length === 0) return [];
 
-    // সাম্প্রতিক সময় অনুযায়ী সাজানো
     matched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-    // শুধুমাত্র ২৪ ঘণ্টার মধ্যে থাকা পোস্ট ফিল্টার করা
     let recent24h = matched.filter(p => p.timestamp && p.timestamp >= twentyFourHoursAgo);
 
     if (recent24h.length > 0) {
-        return recent24h.slice(0, 2); // সর্বোচ্চ ১-২ টি নতুন পোস্ট
+        return recent24h.slice(0, 2); 
     } else {
-        // টাইমস্ট্যাম্প ছাড়া থাকলে শুধু ১টি লেটেস্ট পোস্ট দেখাবে
         let latest = matched[0];
         if (!latest.timestamp) {
             return [latest];
         }
-        return []; // ২৪ ঘণ্টার পুরনো পোস্ট হলে দেখাবে না
+        return []; 
     }
 }
 
-bot.on('message', (msg) => {
+// ==========================================
+// 🚀 আপডেট করা মেসেজ লজিক (অটো-ডিলিট সহ)
+// ==========================================
+bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
@@ -321,21 +344,31 @@ bot.on('message', (msg) => {
         saveUsers();
     }
 
+    // ১. ইউজারের পাঠানো টেক্সট মেসেজটি সঙ্গে সঙ্গে ডিলিট করা
+    try {
+        await bot.deleteMessage(chatId, msg.message_id);
+    } catch (e) {}
+
     if (text) {
+        // ২. বটের পাঠানো পুরোনো মেসেজগুলো স্ক্রিন থেকে ডিলিট করা
+        await deletePreviousBotMessages(chatId);
+
         if (text.startsWith('/start')) {
             const welcomeText = `<b>Welcome to the Official Promo Code Bot!</b>\n\n<b>⚠️ Notice:</b> Here you will get Only Yono Promo Code. No other games or unrelated content will be provided here.\n\n🚀 All updates and promo codes for any new Yono games will be available here first!\n\n📢 <b>How to get codes instantly:</b>\n• Whenever you join, you will automatically receive new posts.\n• Need codes right now? Just type and search the game name in the chat. The bot will instantly send you the available promo codes right away!`;
-            bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML" });
+            
+            let sentMsg = await bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML" });
+            if (sentMsg) trackBotMessage(chatId, sentMsg.message_id);
+
         } else if (text.startsWith('/restore')) {
             restorePostsToChannel(chatId);
         } else {
             let foundPosts = getRecentPostsForQuery(text);
 
             if (foundPosts.length > 0) {
-                foundPosts.forEach(post => {
-                    sendPostToUser(chatId, post);
-                });
+                for (let post of foundPosts) {
+                    await sendPostToUser(chatId, post);
+                }
             } else {
-                // ইউজারদের অল ইওনো গেম সার্চে এনগেজ রাখার জন্য আল্ট্রা-আকর্ষণীয় মেসেজ
                 const notFoundMessage = `🔥 <b>EXCLUSIVE CODE IS GENERATING...</b> 🔥\n\n` +
                     `⚡ The VIP promo code for <b>"${text.trim()}"</b> is currently being refreshed and will drop very soon!\n\n` +
                     `💡 <b>DON'T JUST WAIT! DO THIS RIGHT NOW:</b>\n` +
@@ -345,13 +378,14 @@ bot.on('message', (msg) => {
                     `• ⏳ Search for <b>"${text.trim()}"</b> again in <b>2 to 5 minutes</b> to grab it first!\n\n` +
                     `👑 <i>This is your #1 Official Hub for <b>ALL YONO GAMES & ALL VIP CODES!</b> 🚀</i>`;
 
-                bot.sendMessage(chatId, notFoundMessage, { parse_mode: "HTML" });
+                let sentMsg = await bot.sendMessage(chatId, notFoundMessage, { parse_mode: "HTML" });
+                if (sentMsg) trackBotMessage(chatId, sentMsg.message_id);
             }
         }
     }
 });
 
-function sendPostToUser(userId, post) {
+async function sendPostToUser(userId, post) {
     const options = { 
         parse_mode: "HTML",
         disable_web_page_preview: true 
@@ -360,19 +394,24 @@ function sendPostToUser(userId, post) {
         options.reply_markup = post.replyMarkup;
     }
 
-    if (post.photo) {
-        bot.sendPhoto(userId, post.photo, { caption: post.text, ...options }).catch(err => {
-            bot.sendPhoto(userId, post.photo, { caption: post.text, reply_markup: post.replyMarkup }).catch(e => {});
-        });
-    } else if (post.text) {
-        bot.sendMessage(userId, post.text, options).catch(err => {
-            bot.sendMessage(userId, post.text, { reply_markup: post.replyMarkup }).catch(e => {});
-        });
+    try {
+        let sentMsg;
+        if (post.photo) {
+            sentMsg = await bot.sendPhoto(userId, post.photo, { caption: post.text, ...options });
+        } else if (post.text) {
+            sentMsg = await bot.sendMessage(userId, post.text, options);
+        }
+
+        if (sentMsg) {
+            trackBotMessage(userId, sentMsg.message_id);
+        }
+    } catch (err) {
+        console.error(`Failed to send post to ${userId}:`, err.message);
     }
 }
 
 // ==========================================
-// 🔄 প্রতি ৭ দিনে স্বয়ংক্রিয় অটো-মেসেজ লজিক
+// 🔄 প্রতি ৭ দিনে স্বয়ংক্রিয় অটো-মেসেজ (অপরিবর্তিত)
 // ==========================================
 const weeklyMessage = `⚡ <b>WEEKLY VIP BONUS ALERT!</b> ⚡\n\n` +
     `🎁 <b>New Yono Promo Codes Are Now Live!</b>\n\n` +
@@ -383,7 +422,6 @@ const weeklyMessage = `⚡ <b>WEEKLY VIP BONUS ALERT!</b> ⚡\n\n` +
     `• 🔔 Keep your notifications <b>ON</b> so you never miss a fast-claim code drop!\n\n` +
     `👑 <i>Type your favorite game name below and grab your free code now! 🚀</i>`;
 
-// প্রতি রবিবার সকাল ১০টায় অটোমেটিক ইউজারদের কাছে মেসেজ যাবে ('0 10 * * 0')
 cron.schedule('0 10 * * 0', () => {
     console.log('Sending weekly promo code message to all users...');
     if (botUsers && botUsers.length > 0) {
@@ -391,9 +429,9 @@ cron.schedule('0 10 * * 0', () => {
             setTimeout(() => {
                 bot.sendMessage(userId, weeklyMessage, { parse_mode: 'HTML', disable_web_page_preview: true })
                     .catch(err => console.log(`User ${userId} blocked the bot or failed.`));
-            }, index * 40); // স্মুথ ডেলিভারির জন্য টাইমিং
+            }, index * 40); 
         });
     }
 });
 
-console.log("Bot running with strict game search, 24h filter, weekly auto-message & English fallback message...");
+console.log("Bot running with clean screen UI, strict search, 24h filter & safe data storage...");
