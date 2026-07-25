@@ -6,34 +6,40 @@ const cron = require('node-cron');
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
+// 🎯 আপনার চ্যানেলের সঠিক ইউজারনেম
 const TARGET_CHANNEL = '@VipYonoFreeCode';
 
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
 
 // ==========================================
-// 🛡️ ডাটাবেজ সেফটি লজিক (অপরিবর্তিত ও সুরক্ষীত)
+// 🛡️ ডাটাবেজ সেফটি লজিক
 // ==========================================
-let postDatabase = {};
-if (fs.existsSync(POSTS_FILE)) {
-    try {
-        postDatabase = JSON.parse(fs.readFileSync(POSTS_FILE, 'utf8'));
-    } catch (e) {
-        postDatabase = {};
-    }
+if (!fs.existsSync(POSTS_FILE)) {
+    fs.writeFileSync(POSTS_FILE, JSON.stringify({ all_posts: [] }, null, 2));
+}
+
+let postDatabase = { all_posts: [] };
+try {
+    postDatabase = JSON.parse(fs.readFileSync(POSTS_FILE, 'utf8'));
+    if (!postDatabase.all_posts) postDatabase.all_posts = [];
+} catch (e) {
+    postDatabase = { all_posts: [] };
 }
 
 function savePosts() {
     fs.writeFileSync(POSTS_FILE, JSON.stringify(postDatabase, null, 2));
 }
 
+if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
+}
+
 let botUsers = [];
-if (fs.existsSync(USERS_FILE)) {
-    try {
-        botUsers = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    } catch (e) {
-        botUsers = [];
-    }
+try {
+    botUsers = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+} catch (e) {
+    botUsers = [];
 }
 
 function saveUsers() {
@@ -41,26 +47,38 @@ function saveUsers() {
 }
 
 // ==========================================
-// 🧹 স্ক্রিন ট্র্যাকার (Start Bot বন্ধ রাখার লজিক)
+// 🧹 স্ক্রিনে অনলি ১টি মেসেজ রাখার ট্র্যাকার
 // ==========================================
-let lastBotMessages = {}; 
+let lastBotMessage = {}; 
 
-function trackBotMessage(chatId, messageId) {
-    if (!lastBotMessages[chatId]) {
-        lastBotMessages[chatId] = [];
-    }
-    lastBotMessages[chatId].push(messageId);
-}
+async function sendSingleMessage(chatId, text, photo, replyMarkup) {
+    const options = { 
+        parse_mode: "HTML",
+        disable_web_page_preview: true 
+    };
+    if (replyMarkup) options.reply_markup = replyMarkup;
 
-async function deletePreviousBotMessages(chatId) {
-    if (lastBotMessages[chatId] && lastBotMessages[chatId].length > 0) {
-        let toDelete = [...lastBotMessages[chatId]];
-        lastBotMessages[chatId] = []; 
-        for (let msgId of toDelete) {
+    let sentMsg = null;
+
+    try {
+        if (photo) {
+            sentMsg = await bot.sendPhoto(chatId, photo, { caption: text, ...options });
+        } else if (text) {
+            sentMsg = await bot.sendMessage(chatId, text, options);
+        }
+
+        // নতুন মেসেজ সফলভাবে যাওয়ার পর আগের মেসেজটি মুছে ফেলা
+        if (lastBotMessage[chatId]) {
             try {
-                await bot.deleteMessage(chatId, msgId);
+                await bot.deleteMessage(chatId, lastBotMessage[chatId]);
             } catch (e) {}
         }
+
+        if (sentMsg) {
+            lastBotMessage[chatId] = sentMsg.message_id;
+        }
+    } catch (err) {
+        console.error(`Error sending message to ${chatId}:`, err.message);
     }
 }
 
@@ -75,7 +93,7 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-// স্মার্ট ফরম্যাটিং ফাংশন (অপরিবর্তিত)
+// 🎨 স্মার্ট ফরম্যাটিং ফাংশন (মূল লেখা অপরিবর্তিত + তীর চিহ্ন ➜)
 function smartFormatPost(text, entities) {
     if (!text) return '';
 
@@ -139,16 +157,17 @@ function smartFormatPost(text, entities) {
             return;
         }
 
+        // 🎯 মূল লেবেল যা আছে তাই থাকবে, শুধু তীর চিহ্ন ➜ যুক্ত হবে
         if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join this channel') && !lower.includes('never miss')) {
             let parts = trimmed.split(/➔|->|➜|:/);
             if (parts.length > 1) {
                 let label = parts[0].trim();
                 let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
                 let safeCode = rawCode.replace(/\./g, '.\u200B');
-                formattedLines.push(`<b>${label}</b>: <code>${safeCode}</code>`);
+                formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
             } else {
                 let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
-                formattedLines.push(`<code>${safeTrimmed}</code>`);
+                formattedLines.push(`➜ <code>${safeTrimmed}</code>`);
             }
         } 
         else if (lower.includes('download now') || lower.includes('game link') || lower.includes('link')) {
@@ -192,32 +211,13 @@ function smartFormatPost(text, entities) {
     return formattedLines.join('\n\n');
 }
 
-// অটোমেটিক ব্রডকাস্ট ফাংশন (অপরিবর্তিত)
 function broadcastPostToAllUsers(post) {
     if (!botUsers || botUsers.length === 0) return;
 
-    console.log(`Broadcasting new post to ${botUsers.length} users...`);
-
-    const options = { 
-        parse_mode: "HTML",
-        disable_web_page_preview: true 
-    };
-    if (post.replyMarkup) {
-        options.reply_markup = post.replyMarkup;
-    }
-
     botUsers.forEach((userId, index) => {
         setTimeout(() => {
-            if (post.photo) {
-                bot.sendPhoto(userId, post.photo, { caption: post.text, ...options }).catch(err => {
-                    console.error(`Failed to send to ${userId}:`, err.message);
-                });
-            } else if (post.text) {
-                bot.sendMessage(userId, post.text, options).catch(err => {
-                    console.error(`Failed to send to ${userId}:`, err.message);
-                });
-            }
-        }, index * 40); 
+            sendSingleMessage(userId, post.text, post.photo, post.replyMarkup);
+        }, index * 50); 
     });
 }
 
@@ -241,12 +241,12 @@ function savePostContent(msg) {
             timestamp: Date.now()
         };
 
-        if (!postDatabase['all_posts']) {
-            postDatabase['all_posts'] = [];
+        if (!postDatabase.all_posts) {
+            postDatabase.all_posts = [];
         }
-        const globalExists = postDatabase['all_posts'].some(p => p.text === text);
+        const globalExists = postDatabase.all_posts.some(p => p.text === text);
         if (!globalExists) {
-            postDatabase['all_posts'].push(postContent);
+            postDatabase.all_posts.push(postContent);
             savePosts();
         }
     }
@@ -264,63 +264,28 @@ bot.on('channel_post', (msg) => {
     }
 });
 
-function restorePostsToChannel(chatId) {
-    if (postDatabase['all_posts'] && postDatabase['all_posts'].length > 0) {
-        bot.sendMessage(chatId, `Restoring ${postDatabase['all_posts'].length} posts safely with intact links...`);
-        
-        postDatabase['all_posts'].forEach((post, index) => {
-            setTimeout(() => {
-                const options = { 
-                    parse_mode: "HTML",
-                    disable_web_page_preview: true 
-                };
-                if (post.replyMarkup) {
-                    options.reply_markup = post.replyMarkup;
-                }
-
-                if (post.photo) {
-                    bot.sendPhoto(TARGET_CHANNEL, post.photo, { 
-                        caption: post.text, 
-                        ...options 
-                    }).catch(err => {
-                        bot.sendPhoto(TARGET_CHANNEL, post.photo, { caption: post.text, reply_markup: post.replyMarkup }).catch(e => {});
-                    });
-                } else if (post.text) {
-                    bot.sendMessage(TARGET_CHANNEL, post.text, options).catch(err => {
-                        bot.sendMessage(TARGET_CHANNEL, post.text, { reply_markup: post.replyMarkup }).catch(e => {});
-                    });
-                }
-            }, index * 1200);
-        });
-    } else {
-        bot.sendMessage(chatId, "No saved posts found in database to restore!");
-    }
-}
-
-// 🎯 নিখুঁত সার্চ ফাংশন (২৪ ঘণ্টার বাধ্যবাধকতা তুলে দেওয়া হয়েছে)
-function getRecentPostsForQuery(userQuery) {
-    if (!postDatabase['all_posts'] || postDatabase['all_posts'].length === 0) {
-        return [];
+function getLatestPostForQuery(userQuery) {
+    if (!postDatabase.all_posts || postDatabase.all_posts.length === 0) {
+        return null;
     }
 
     const cleanQuery = userQuery.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (cleanQuery.length < 2) return [];
+    if (cleanQuery.length < 2) return null;
 
-    let matched = postDatabase['all_posts'].filter(post => {
+    let matched = postDatabase.all_posts.filter(post => {
         if (!post.text) return false;
         let cleanText = post.text.toLowerCase().replace(/[^a-z0-9]/g, '');
         return cleanText.includes(cleanQuery);
     });
 
-    if (matched.length === 0) return [];
+    if (matched.length === 0) return null;
 
-    // সাম্প্রতিক সময় অনুযায়ী সাজিয়ে সর্বোচ্চ সেরা ২টি ম্যাচিং পোস্ট দেখাবে (পুরোনো বা নতুন যাই হোক)
     matched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    return matched.slice(0, 2); 
+    return matched[0];
 }
 
 // ==========================================
-// 🚀 নিখুঁত চ্যাটবক্স হ্যান্ডলার (Start Bot আসা সম্পূর্ণ বন্ধ)
+// 🚀 অনলি ১-পোস্ট চ্যাট ইন্টারফেস
 // ==========================================
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -332,30 +297,19 @@ bot.on('message', async (msg) => {
     }
 
     if (text) {
+        // ইউজারের ইনপুট করা মেসেজটি সাথে সাথে ডিলিট হবে
+        try { await bot.deleteMessage(chatId, msg.message_id); } catch (e) {}
+
         if (text.startsWith('/start')) {
-            try { await bot.deleteMessage(chatId, msg.message_id); } catch(e){}
-            
             const welcomeText = `<b>Welcome to the Official Promo Code Bot!</b>\n\n<b>⚠️ Notice:</b> Here you will get Only Yono Promo Code. No other games or unrelated content will be provided here.\n\n🚀 All updates and promo codes for any new Yono games will be available here first!\n\n📢 <b>How to get codes instantly:</b>\n• Whenever you join, you will automatically receive new posts.\n• Need codes right now? Just type and search the game name in the chat. The bot will instantly send you the available promo codes right away!`;
             
-            let sentMsg = await bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML" });
-            
-            // আগে নতুন মেসেজ পাঠানো হলো, তারপর পুরোনো মেসেজ মোছা হলো
-            await deletePreviousBotMessages(chatId);
-            if (sentMsg) trackBotMessage(chatId, sentMsg.message_id);
+            await sendSingleMessage(chatId, welcomeText, null, null);
 
-        } else if (text.startsWith('/restore')) {
-            restorePostsToChannel(chatId);
         } else {
-            let foundPosts = getRecentPostsForQuery(text);
+            let foundPost = getLatestPostForQuery(text);
 
-            let newSentIds = [];
-
-            // ১. আগে নতুন রেজাল্ট ইউজারের কাছে পাঠানো
-            if (foundPosts.length > 0) {
-                for (let post of foundPosts) {
-                    let sentId = await sendPostToUser(chatId, post);
-                    if (sentId) newSentIds.push(sentId);
-                }
+            if (foundPost) {
+                await sendSingleMessage(chatId, foundPost.text, foundPost.photo, foundPost.replyMarkup);
             } else {
                 const notFoundMessage = `🔥 <b>EXCLUSIVE CODE IS GENERATING...</b> 🔥\n\n` +
                     `⚡ The VIP promo code for <b>"${text.trim()}"</b> is currently being refreshed and will drop very soon!\n\n` +
@@ -366,51 +320,12 @@ bot.on('message', async (msg) => {
                     `• ⏳ Search for <b>"${text.trim()}"</b> again in <b>2 to 5 minutes</b> to grab it first!\n\n` +
                     `👑 <i>This is your #1 Official Hub for <b>ALL YONO GAMES & ALL VIP CODES!</b> 🚀</i>`;
 
-                let sentMsg = await bot.sendMessage(chatId, notFoundMessage, { parse_mode: "HTML" });
-                if (sentMsg) newSentIds.push(sentMsg.message_id);
-            }
-
-            // ২. নতুন মেসেজ পাওয়ার পর ইউজারের টেক্সট ও আগের পুরোনো মেসেজ মোছা (যার ফলে স্ক্রিন কখনো খালি হবে না)
-            try { await bot.deleteMessage(chatId, msg.message_id); } catch (e) {}
-            await deletePreviousBotMessages(chatId);
-
-            // ৩. নতুন মেসেজ ট্র্যাক করা
-            for (let id of newSentIds) {
-                trackBotMessage(chatId, id);
+                await sendSingleMessage(chatId, notFoundMessage, null, null);
             }
         }
     }
 });
 
-async function sendPostToUser(userId, post) {
-    const options = { 
-        parse_mode: "HTML",
-        disable_web_page_preview: true 
-    };
-    if (post.replyMarkup) {
-        options.reply_markup = post.replyMarkup;
-    }
-
-    try {
-        let sentMsg;
-        if (post.photo) {
-            sentMsg = await bot.sendPhoto(userId, post.photo, { caption: post.text, ...options });
-        } else if (post.text) {
-            sentMsg = await bot.sendMessage(userId, post.text, options);
-        }
-
-        if (sentMsg) {
-            return sentMsg.message_id;
-        }
-    } catch (err) {
-        console.error(`Failed to send post to ${userId}:`, err.message);
-    }
-    return null;
-}
-
-// ==========================================
-// 🔄 ৭ দিনের স্বয়ংক্রিয় অটো-মেসেজ (অপরিবর্তিত)
-// ==========================================
 const weeklyMessage = `⚡ <b>WEEKLY VIP BONUS ALERT!</b> ⚡\n\n` +
     `🎁 <b>New Yono Promo Codes Are Now Live!</b>\n\n` +
     `Hey Gamer! Hundreds of fresh & active promo codes for <b>ALL YONO GAMES</b> have just been updated! Don't let your free bonuses expire! 💰\n\n` +
@@ -421,15 +336,13 @@ const weeklyMessage = `⚡ <b>WEEKLY VIP BONUS ALERT!</b> ⚡\n\n` +
     `👑 <i>Type your favorite game name below and grab your free code now! 🚀</i>`;
 
 cron.schedule('0 10 * * 0', () => {
-    console.log('Sending weekly promo code message to all users...');
     if (botUsers && botUsers.length > 0) {
         botUsers.forEach((userId, index) => {
             setTimeout(() => {
-                bot.sendMessage(userId, weeklyMessage, { parse_mode: 'HTML', disable_web_page_preview: true })
-                    .catch(err => console.log(`User ${userId} blocked the bot or failed.`));
-            }, index * 40); 
+                sendSingleMessage(userId, weeklyMessage, null, null);
+            }, index * 50); 
         });
     }
 });
 
-console.log("Bot running smoothly with instant history search & active screen protection...");
+console.log("Bot running with original text format, promo arrow ➜, and strict 1-message screen rule!");
