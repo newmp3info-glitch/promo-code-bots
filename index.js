@@ -7,7 +7,7 @@ const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // 🎯 আপনার চ্যানেলের সঠিক ইউজারনেম
-const TARGET_CHANNEL = '@VipYonoFreeCode';
+const TARGET_CHANNEL = '@vipYonoFreeCode';
 
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
@@ -67,7 +67,6 @@ async function sendSingleMessage(chatId, text, photo, replyMarkup) {
             sentMsg = await bot.sendMessage(chatId, text, options);
         }
 
-        // নতুন মেসেজ সফলভাবে যাওয়ার পর আগের মেসেজটি মুছে ফেলা
         if (lastBotMessage[chatId]) {
             try {
                 await bot.deleteMessage(chatId, lastBotMessage[chatId]);
@@ -93,7 +92,7 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-// 🎨 স্মার্ট ফরম্যাটিং ফাংশন (মূল লেখা অপরিবর্তিত + তীর চিহ্ন ➜)
+// 🎨 স্মার্ট ফরম্যাটিং ফাংশন
 function smartFormatPost(text, entities) {
     if (!text) return '';
 
@@ -157,7 +156,6 @@ function smartFormatPost(text, entities) {
             return;
         }
 
-        // 🎯 মূল লেবেল যা আছে তাই থাকবে, শুধু তীর চিহ্ন ➜ যুক্ত হবে
         if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join this channel') && !lower.includes('never miss')) {
             let parts = trimmed.split(/➔|->|➜|:/);
             if (parts.length > 1) {
@@ -248,18 +246,26 @@ function savePostContent(msg) {
         if (!globalExists) {
             postDatabase.all_posts.push(postContent);
             savePosts();
+            return true; // নতুন পোস্ট সেভ হলে true রিটার্ন করবে
         }
     }
 
-    return postContent;
+    return false;
 }
 
 bot.on('channel_post', (msg) => {
     const chatUsername = msg.chat.username ? `@${msg.chat.username.toLowerCase()}` : '';
     if (chatUsername === TARGET_CHANNEL.toLowerCase()) {
-        const newPost = savePostContent(msg);
-        if (newPost) {
-            broadcastPostToAllUsers(newPost);
+        const saved = savePostContent(msg);
+        if (saved) {
+            let rawText = msg.caption || msg.text || '';
+            let entities = msg.caption_entities || msg.entities || [];
+            let text = smartFormatPost(rawText, entities);
+            broadcastPostToAllUsers({
+                text: text,
+                photo: msg.photo ? msg.photo[msg.photo.length - 1].file_id : null,
+                replyMarkup: msg.reply_markup || null
+            });
         }
     }
 });
@@ -285,7 +291,7 @@ function getLatestPostForQuery(userQuery) {
 }
 
 // ==========================================
-// 🚀 অনলি ১-পোস্ট চ্যাট ইন্টারফেস
+// 🚀 মেসেজ হ্যান্ডলার ও সেভ লজিক
 // ==========================================
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -296,8 +302,18 @@ bot.on('message', async (msg) => {
         saveUsers();
     }
 
+    // 📥 ফরওয়ার্ড করা পোস্ট সরাসরি ডাটাবেজে সেভ করার লজিক
+    if (msg.forward_from_chat || msg.forward_date) {
+        let isSaved = savePostContent(msg);
+        if (isSaved) {
+            await bot.sendMessage(chatId, `✅ <b>পোস্টটি ডাটাবেজে সফলভাবে ব্যাকআপ সেভ হয়েছে!</b>\n📊 মোট সেভ হওয়া পোস্ট: <b>${postDatabase.all_posts.length}টি</b>`, { parse_mode: "HTML" });
+        } else {
+            await bot.sendMessage(chatId, `⚠️ <b>এই পোস্টটি ডাটাবেজে আগেই ছিল অথবা খালি!</b>`, { parse_mode: "HTML" });
+        }
+        return; // ফরওয়ার্ড সেভ হওয়ার পর মেসেজ সার্চে যাবে না
+    }
+
     if (text) {
-        // ইউজারের ইনপুট করা মেসেজটি সাথে সাথে ডিলিট হবে
         try { await bot.deleteMessage(chatId, msg.message_id); } catch (e) {}
 
         if (text.startsWith('/start')) {
@@ -345,4 +361,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with original text format, promo arrow ➜, and strict 1-message screen rule!");
+console.log("Bot running with secret forward-to-save feature for admin!");
