@@ -11,6 +11,7 @@ const TARGET_CHANNEL = '@VipYonoFreeCode';
 
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
+const VOICE_ID_FILE = 'voice_id.txt';
 
 // ==========================================
 // Database Safety & Persistence Logic
@@ -61,7 +62,6 @@ async function sendSingleMessage(chatId, text, photo, replyMarkup) {
     let sentMsg = null;
 
     try {
-        // আগের পাঠানো সকল মেসেজ (ওয়েলকাম টেক্সট ও ভয়েস সহ) ডিলিট করে স্ক্রিন পরিষ্কার করবে
         if (userMessages[chatId] && userMessages[chatId].length > 0) {
             for (let oldMsgId of userMessages[chatId]) {
                 try {
@@ -329,7 +329,6 @@ bot.on('message', async (msg) => {
             const welcomeText = `<b>Welcome to the Official Promo Code Bot!</b>\n\n<b>⚠️ Notice:</b> Here you will get Only Yono Promo Code. No other games or unrelated content will be provided here.\n\n🚀 All updates and promo codes for any new Yono games will be available here first!\n\n📢 <b>How to get codes instantly:</b>\n• Whenever you join, you will automatically receive new posts.\n• Need codes right now? Just type and search the game name in the chat. The bot will instantly send you the available promo codes right away!`;
             
             try {
-                // পূর্বের সব মেসেজ মুছে ফেলবে
                 if (userMessages[chatId] && userMessages[chatId].length > 0) {
                     for (let oldMsgId of userMessages[chatId]) {
                         try { await bot.deleteMessage(chatId, oldMsgId); } catch (e) {}
@@ -337,15 +336,32 @@ bot.on('message', async (msg) => {
                 }
                 userMessages[chatId] = [];
 
-                // ১. প্রথমে ওয়েলকাম মেসেজ পাঠাবে (উপরে থাকবে)
+                // ১. ওয়েলকাম মেসেজ পাঠানো
                 let textMsg = await bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML", disable_web_page_preview: true });
                 userMessages[chatId].push(textMsg.message_id);
 
-                // ২. ঠিক তার নিচে ভয়েস নোট/অডিও পাঠাবে (নিচে থাকবে)
-                if (fs.existsSync('./audio.mp3')) {
-                    let voiceMsg = await bot.sendVoice(chatId, fs.createReadStream('./audio.mp3'));
+                // ২. ইনস্ট্যান্ট ভয়েস নোট পাঠানো (ক্যাশড ফাইল আইডি ব্যবহার করে)
+                let cachedVoiceId = '';
+                if (fs.existsSync(VOICE_ID_FILE)) {
+                    cachedVoiceId = fs.readFileSync(VOICE_ID_FILE, 'utf8').trim();
+                }
+
+                let voiceMsg = null;
+                if (cachedVoiceId) {
+                    // যদি আগে থেকেই file_id সেভ করা থাকে, তবে সার্ভার থেকে আপলোড না করেই পলকে পাঠিয়ে দেবে
+                    voiceMsg = await bot.sendVoice(chatId, cachedVoiceId);
+                } else if (fs.existsSync('./audio.mp3')) {
+                    // প্রথমবার আপলোড করে file_id সংগ্রহ ও সেভ করে নেবে
+                    voiceMsg = await bot.sendVoice(chatId, fs.createReadStream('./audio.mp3'));
+                    if (voiceMsg && voiceMsg.voice && voiceMsg.voice.file_id) {
+                        fs.writeFileSync(VOICE_ID_FILE, voiceMsg.voice.file_id);
+                    }
+                }
+
+                if (voiceMsg) {
                     userMessages[chatId].push(voiceMsg.message_id);
                 }
+
             } catch (e) {
                 console.error("Error sending welcome message & voice:", e.message);
             }
