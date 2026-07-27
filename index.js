@@ -47,9 +47,9 @@ function saveUsers() {
 }
 
 // ==========================================
-// Single-Message Screen Manager
+// Single-Message Screen Manager (Multi-Delete)
 // ==========================================
-let lastBotMessage = {}; 
+let userMessages = {}; 
 
 async function sendSingleMessage(chatId, text, photo, replyMarkup) {
     const options = { 
@@ -61,20 +61,24 @@ async function sendSingleMessage(chatId, text, photo, replyMarkup) {
     let sentMsg = null;
 
     try {
+        // আগের পাঠানো সকল মেসেজ (ওয়েলকাম টেক্সট ও ভয়েস সহ) ডিলিট করে স্ক্রিন পরিষ্কার করবে
+        if (userMessages[chatId] && userMessages[chatId].length > 0) {
+            for (let oldMsgId of userMessages[chatId]) {
+                try {
+                    await bot.deleteMessage(chatId, oldMsgId);
+                } catch (e) {}
+            }
+        }
+        userMessages[chatId] = [];
+
         if (photo) {
             sentMsg = await bot.sendPhoto(chatId, photo, { caption: text, ...options });
         } else if (text) {
             sentMsg = await bot.sendMessage(chatId, text, options);
         }
 
-        if (lastBotMessage[chatId]) {
-            try {
-                await bot.deleteMessage(chatId, lastBotMessage[chatId]);
-            } catch (e) {}
-        }
-
         if (sentMsg) {
-            lastBotMessage[chatId] = sentMsg.message_id;
+            userMessages[chatId].push(sentMsg.message_id);
         }
     } catch (err) {
         console.error(`Error sending message to ${chatId}:`, err.message);
@@ -324,19 +328,27 @@ bot.on('message', async (msg) => {
         if (text.startsWith('/start')) {
             const welcomeText = `<b>Welcome to the Official Promo Code Bot!</b>\n\n<b>⚠️ Notice:</b> Here you will get Only Yono Promo Code. No other games or unrelated content will be provided here.\n\n🚀 All updates and promo codes for any new Yono games will be available here first!\n\n📢 <b>How to get codes instantly:</b>\n• Whenever you join, you will automatically receive new posts.\n• Need codes right now? Just type and search the game name in the chat. The bot will instantly send you the available promo codes right away!`;
             
-            // লোকাল ফোল্ডার থেকে অডিও ফাইলটি পাঠাবে (কোনো file_id লাগবে না)
             try {
+                // পূর্বের সব মেসেজ মুছে ফেলবে
+                if (userMessages[chatId] && userMessages[chatId].length > 0) {
+                    for (let oldMsgId of userMessages[chatId]) {
+                        try { await bot.deleteMessage(chatId, oldMsgId); } catch (e) {}
+                    }
+                }
+                userMessages[chatId] = [];
+
+                // ১. প্রথমে ওয়েলকাম মেসেজ পাঠাবে (উপরে থাকবে)
+                let textMsg = await bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML", disable_web_page_preview: true });
+                userMessages[chatId].push(textMsg.message_id);
+
+                // ২. ঠিক তার নিচে ভয়েস নোট/অডিও পাঠাবে (নিচে থাকবে)
                 if (fs.existsSync('./audio.mp3')) {
-                    await bot.sendAudio(chatId, fs.createReadStream('./audio.mp3'), {
-                        caption: "🎵 Yono All Promo Code ▶️"
-                    });
+                    let voiceMsg = await bot.sendVoice(chatId, fs.createReadStream('./audio.mp3'));
+                    userMessages[chatId].push(voiceMsg.message_id);
                 }
             } catch (e) {
-                console.error("Error sending audio:", e.message);
+                console.error("Error sending welcome message & voice:", e.message);
             }
-
-            // মূল ওয়েলকাম টেক্সট পাঠাবে
-            await sendSingleMessage(chatId, welcomeText, null, null);
 
         } else {
             let foundPost = getLatestPostForQuery(text);
