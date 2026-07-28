@@ -63,7 +63,13 @@ async function sendSingleMessage(chatId, text, photo, replyMarkup) {
 
     try {
         if (photo) {
-            sentMsg = await bot.sendPhoto(chatId, photo, { caption: text, ...options });
+            // টেলিগ্রামের ১০২৪ ক্যারেক্টার লিমি트 হ্যান্ডেল করার জন্য সেফটি চেক (ডিজাইন বা টেমপ্লেট অপরিবর্তিত রেখে)
+            if (text && text.length > 1024) {
+                await bot.sendPhoto(chatId, photo, { reply_markup: replyMarkup });
+                sentMsg = await bot.sendMessage(chatId, text, options);
+            } else {
+                sentMsg = await bot.sendPhoto(chatId, photo, { caption: text, ...options });
+            }
         } else if (text) {
             sentMsg = await bot.sendMessage(chatId, text, options);
         }
@@ -96,7 +102,7 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-// Smart formatting function
+// Smart formatting function (আপনার নিজস্ব অরিজিনাল টেমপ্লেট ও ডিজাইন)
 function smartFormatPost(text, entities) {
     if (!text) return '';
 
@@ -329,11 +335,9 @@ bot.on('message', async (msg) => {
             try {
                 let newMsgIds = [];
 
-                // ১. প্রথমে নতুন ওয়েলকাম টেক্সট মেসেজ পাঠানো
                 let textMsg = await bot.sendMessage(chatId, welcomeText, { parse_mode: "HTML", disable_web_page_preview: true });
                 if (textMsg) newMsgIds.push(textMsg.message_id);
 
-                // ২. ভয়েস নোট পাঠানো
                 let cachedVoiceId = '';
                 if (fs.existsSync(VOICE_ID_FILE)) {
                     cachedVoiceId = fs.readFileSync(VOICE_ID_FILE, 'utf8').trim();
@@ -351,7 +355,6 @@ bot.on('message', async (msg) => {
 
                 if (voiceMsg) newMsgIds.push(voiceMsg.message_id);
 
-                // ৩. নতুন মেসেজগুলো আসার পরে ইউজারের /start কমান্ড এবং পুরনো মেসেজগুলো ডিলিট করা
                 try { await bot.deleteMessage(chatId, msg.message_id); } catch (e) {}
 
                 if (userMessages[chatId] && userMessages[chatId].length > 0) {
@@ -383,7 +386,6 @@ bot.on('message', async (msg) => {
                 await sendSingleMessage(chatId, notFoundMessage, null, null);
             }
 
-            // ৪. ইউজারের টাইপ করা সার্চ মেসেজটি ১.৫ সেকেন্ড (1500ms) পর অটোমেটিক ডিলিট হবে
             setTimeout(async () => {
                 try {
                     await bot.deleteMessage(chatId, msg.message_id);
@@ -412,4 +414,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with flawless start flow & 1.5s fast search-delete timer!");
+console.log("Bot running with flawless start flow & 1.5s search-delete timer!");
