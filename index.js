@@ -156,7 +156,24 @@ function smartFormatPost(text, entities) {
             return;
         }
 
-        if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join this channel') && !lower.includes('never miss')) {
+        if (
+            lower.includes('signup bonus') || 
+            lower.includes('new users') || 
+            lower.includes('join') || 
+            lower.includes('pin') || 
+            lower.includes('channel') ||
+            lower.includes('never miss') ||
+            lower.includes('important') ||
+            lower.includes('daily promo codes') ||
+            trimmed.startsWith('🔥') ||
+            trimmed.startsWith('🎁') ||
+            trimmed.startsWith('📢') ||
+            trimmed.startsWith('•')
+        ) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
+        } 
+        else if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join') && !lower.includes('pin') && !lower.includes('channel')) {
             let parts = trimmed.split(/➔|->|➜|:/);
             if (parts.length > 1) {
                 let label = parts[0].trim();
@@ -184,19 +201,6 @@ function smartFormatPost(text, entities) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
         } 
-        else if (
-            lower.includes('signup bonus') || 
-            lower.includes('new users') || 
-            lower.includes('join this channel') || 
-            lower.includes('pin this channel') ||
-            lower.includes('never miss') ||
-            lower.includes('important promo code') ||
-            trimmed.startsWith('🔥') ||
-            trimmed.startsWith('🎁')
-        ) {
-            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            formattedLines.push(`<blockquote>${cleanLine}</blockquote>`);
-        } 
         else {
             formattedLines.push(trimmed);
         }
@@ -219,7 +223,6 @@ function broadcastPostToAllUsers(post) {
     });
 }
 
-// Helper function to extract a unique game key from post text to manage single post per game
 function getGameIdentifier(text) {
     if (!text) return '';
     let firstLine = text.split('\n')[0].toLowerCase();
@@ -238,13 +241,11 @@ function savePostContent(msg) {
     const replyMarkup = msg.reply_markup || null;
     
     if (formattedText || photo) {
-        // Prevent exact duplicate inserts
         const textExists = postDatabase.all_posts.some(p => p.rawText === rawText);
         if (textExists) {
             return false;
         }
 
-        // Automatically remove older posts for the exact same game so only the newest one remains
         const gameKey = getGameIdentifier(rawText);
         if (gameKey && gameKey.length > 2) {
             postDatabase.all_posts = postDatabase.all_posts.filter(p => {
@@ -418,4 +419,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with single-post-per-game replacement logic!");
+console.log("Bot running with bold blockquote text formatting!");
