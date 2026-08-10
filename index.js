@@ -156,6 +156,8 @@ function smartFormatPost(text, entities) {
             return;
         }
 
+        let isGameListItem = trimmed.startsWith('•') || trimmed.startsWith('▪️') || trimmed.startsWith('🔸');
+
         let isDomainOnlyLine = (
             trimmed.startsWith('www.') || 
             lower.includes('.com') || 
@@ -169,29 +171,26 @@ function smartFormatPost(text, entities) {
 
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
         
-        let isQuoteLine = !isDomainOnlyLine && !isDownloadLine && (
+        // শুধুমাত্র নির্দিষ্ট নোটিশ বা অফার লাইনগুলোই প্যাকেটের মধ্যে থাকবে, গেমের নাম বা ডোমেন নয়
+        let isQuoteLine = !isGameListItem && !isDomainOnlyLine && !isDownloadLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
-            lower.includes('join') || 
-            lower.includes('pin') || 
-            lower.includes('channel') ||
-            lower.includes('never miss') ||
-            lower.includes('important') ||
+            lower.includes('join & pin') || 
+            lower.includes('claim all extra special code') ||
             lower.includes('daily promo codes') ||
             trimmed.startsWith('🔥') ||
             trimmed.startsWith('🎁') ||
             trimmed.startsWith('📢')
         );
 
-        if (isDomainOnlyLine) {
-            let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-            // জিরো-উইডথ স্পেস ব্যবহার করে টেলিগ্রামের অটো-লিংক হওয়া রোধ করা হয়েছে
-            let safeCode = cleanCode.replace(/\./g, '.\u200B');
-            formattedLines.push(`<code>${safeCode}</code>`);
-        }
-        else if (trimmed.startsWith('•') || trimmed.startsWith('▪️') || trimmed.startsWith('🔸')) {
+        if (isGameListItem) {
             let cleanItem = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(cleanItem);
+        }
+        else if (isDomainOnlyLine) {
+            let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+            let safeCode = cleanCode.replace(/\./g, '.\u200B');
+            formattedLines.push(`<code>${safeCode}</code>`);
         }
         else if (isQuoteLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
@@ -433,4 +432,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with bulk list perfectly matched to channel formatting!");
+console.log("Bot running with strict game list formatting and clean blockquotes!");
