@@ -158,20 +158,27 @@ function smartFormatPost(text, entities) {
 
         let isGameListItem = trimmed.startsWith('•') || trimmed.startsWith('▪️') || trimmed.startsWith('🔸');
 
+        // সব ধরনের ডোমেন ও কোড লাইন নিখুঁতভাবে ধরার জন্য আপডেট করা লজিক
         let isDomainOnlyLine = (
             trimmed.startsWith('www.') || 
+            trimmed.includes('.') || 
             lower.includes('.com') || 
             lower.includes('.win') || 
             lower.includes('.net') || 
             lower.includes('.top') || 
             lower.includes('.app') || 
             lower.includes('.vip') ||
-            lower.includes('.in')
-        ) && !lower.includes('download') && !lower.includes('join') && !lower.includes('pin');
+            lower.includes('.in') ||
+            lower.includes('.store') ||
+            lower.includes('.club') ||
+            lower.includes('.xyz') ||
+            lower.includes('.buzz') ||
+            lower.includes('.bet')
+        ) && !trimmed.includes(' ') && !lower.includes('http');
 
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
         
-        // শুধুমাত্র নির্দিষ্ট নোটিশ বা অফার লাইনগুলোই প্যাকেটের মধ্যে থাকবে, গেমের নাম বা ডোমেন নয়
+        // শুধুমাত্র নির্দিষ্ট নোটিশ বা অফার লাইনগুলোই প্যাকেটের মধ্যে থাকবে
         let isQuoteLine = !isGameListItem && !isDomainOnlyLine && !isDownloadLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
@@ -189,6 +196,7 @@ function smartFormatPost(text, entities) {
         }
         else if (isDomainOnlyLine) {
             let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+            // জিরো-উইডথ স্পেস ব্যবহার করে টেলিগ্রামের অটো-লিংক হওয়া চিরতরে বন্ধ করা হয়েছে
             let safeCode = cleanCode.replace(/\./g, '.\u200B');
             formattedLines.push(`<code>${safeCode}</code>`);
         }
@@ -432,4 +440,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with strict game list formatting and clean blockquotes!");
+console.log("Bot running with foolproof domain anti-linking and exact formatting!");
