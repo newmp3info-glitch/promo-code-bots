@@ -158,28 +158,9 @@ function smartFormatPost(text, entities) {
 
         let isGameListItem = trimmed.startsWith('•') || trimmed.startsWith('▪️') || trimmed.startsWith('🔸');
 
-        // সব ধরনের ডোমেন ও কোড লাইন নিখুঁতভাবে ধরার জন্য আপডেট করা লজিক
-        let isDomainOnlyLine = (
-            trimmed.startsWith('www.') || 
-            trimmed.includes('.') || 
-            lower.includes('.com') || 
-            lower.includes('.win') || 
-            lower.includes('.net') || 
-            lower.includes('.top') || 
-            lower.includes('.app') || 
-            lower.includes('.vip') ||
-            lower.includes('.in') ||
-            lower.includes('.store') ||
-            lower.includes('.club') ||
-            lower.includes('.xyz') ||
-            lower.includes('.buzz') ||
-            lower.includes('.bet')
-        ) && !trimmed.includes(' ') && !lower.includes('http');
-
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
         
-        // শুধুমাত্র নির্দিষ্ট নোটিশ বা অফার লাইনগুলোই প্যাকেটের মধ্যে থাকবে
-        let isQuoteLine = !isGameListItem && !isDomainOnlyLine && !isDownloadLine && (
+        let isQuoteLine = !isGameListItem && !isDownloadLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join & pin') || 
@@ -193,12 +174,6 @@ function smartFormatPost(text, entities) {
         if (isGameListItem) {
             let cleanItem = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(cleanItem);
-        }
-        else if (isDomainOnlyLine) {
-            let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-            // জিরো-উইডথ স্পেস ব্যবহার করে টেলিগ্রামের অটো-লিংক হওয়া চিরতরে বন্ধ করা হয়েছে
-            let safeCode = cleanCode.replace(/\./g, '.\u200B');
-            formattedLines.push(`<code>${safeCode}</code>`);
         }
         else if (isQuoteLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
@@ -222,8 +197,30 @@ function smartFormatPost(text, entities) {
             formattedLines.push(`<b>${cleanLine}</b>`);
         } 
         else {
-            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            formattedLines.push(cleanLine);
+            // ডোমেন, ইউআরএল বা প্রমো কোড লাইনগুলোকে নিখوঁতভাবে কোড ট্যাগে রূপান্তর করার লজিক
+            if (trimmed.includes('➔') || trimmed.includes('->') || trimmed.includes('➜')) {
+                let parts = trimmed.split(/➔|->|➜/);
+                if (parts.length === 2) {
+                    let label = parts[0].replace(/<[^>]*>/g, '').trim();
+                    let codeOrDomain = parts[1].replace(/<[^>]*>/g, '').trim();
+                    let safeCode = codeOrDomain.replace(/\./g, '.\u200B');
+                    formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
+                    return;
+                }
+            }
+
+            if (!trimmed.includes(' ') && (trimmed.includes('.') || lower.includes('http'))) {
+                let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+                let safeCode = cleanCode.replace(/\./g, '.\u200B');
+                formattedLines.push(`<code>${safeCode}</code>`);
+                return;
+            }
+
+            let formattedLine = trimmed.replace(/(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z0-9][-a-zA-Z0-9]*[^\s]*\.(com|win|net|top|app|vip|in|store|club|xyz|buzz|bet)[^\s]*)/gi, (match) => {
+                return `<code>${match.replace(/\./g, '.\u200B')}</code>`;
+            });
+
+            formattedLines.push(formattedLine);
         }
     });
 
@@ -440,4 +437,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with foolproof domain anti-linking and exact formatting!");
+console.log("Bot running with ultimate anti-link protection for all domains and codes!");
