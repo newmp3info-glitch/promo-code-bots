@@ -150,56 +150,64 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
-        // ১ম লাইন: টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // প্রমো কোড লাইন (লিংক হবে না, টেপ করলে কপি হবে)
-        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('.com') || lower.includes('.win') || lower.includes('.net'));
-
-        // ডাউনলোড লাইন
-        let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
-
-        // যে লাইনগুলো প্যাকেটের মধ্যে থাকবে এবং বোল্ড হবে (নিউ ইউজার্স এবং জয়েন লাইন)
+        // কোট লাইনগুলো সবার আগে চেক করা হলো যাতে 'join' বা 'pin' বা 'daily promo codes' যুক্ত লাইনগুলো প্যাকেটের মধ্যে বোল্ড থাকে
         let isQuoteLine = (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join') || 
             lower.includes('pin') || 
+            lower.includes('channel') ||
             lower.includes('never miss') ||
             lower.includes('important') ||
+            lower.includes('daily promo codes') ||
             trimmed.startsWith('🔥') ||
-            trimmed.startsWith('🎁')
+            trimmed.startsWith('🎁') ||
+            trimmed.startsWith('📢') ||
+            trimmed.startsWith('•')
         );
 
-        if (isPromoCodeLine) {
-            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            cleanLine = cleanLine.replace(/\./g, '.\u200B'); // টেলিগ্রামের অটো-লিংক হওয়া রোধ করতে জিরো-উইডথ স্পেস
-            formattedLines.push(cleanLine);
-        }
-        else if (isQuoteLine && !isDownloadLine) {
+        let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || lower.includes('link'));
+
+        if (isQuoteLine && !isDownloadLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
-                let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-                let basePart = cleanLine.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
-                if (basePart) {
-                    formattedLines.push(`${basePart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                if (lower.includes('download now')) {
+                    let replacedLine = trimmed.replace(/download now/gi, `<a href="${downloadUrl}"><b>Download Now</b></a>`);
+                    formattedLines.push(replacedLine);
                 } else {
-                    formattedLines.push(`🎰 <b>SPIN GOLD LINK</b> 📱 <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                    formattedLines.push(`<b>🎰 GAME LINK </b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 }
             } else {
                 formattedLines.push(trimmed);
             }
         } 
-        else {
+        else if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link')) {
+            let parts = trimmed.split(/➔|->|➜|:/);
+            if (parts.length > 1) {
+                let label = parts[0].trim();
+                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+                let safeCode = rawCode.replace(/\./g, '.\u200B');
+                formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
+            } else {
+                let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
+                formattedLines.push(`➜ <code>${safeTrimmed}</code>`);
+            }
+        } 
+        else if (lower.includes('minimum') || lower.includes('withdrawal')) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            formattedLines.push(cleanLine);
+            formattedLines.push(`<b>${cleanLine}</b>`);
+        } 
+        else {
+            formattedLines.push(trimmed);
         }
     });
 
@@ -416,4 +424,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with exact channel formatting!");
+console.log("Bot running with correct blockquotes and unlinked promo codes!");
