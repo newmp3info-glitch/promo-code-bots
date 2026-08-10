@@ -156,6 +156,13 @@ function smartFormatPost(text, entities) {
             return;
         }
 
+        // ডোমেন বা কোড ফরম্যাট চেক করার জন্য উন্নত লজিক (যাতে লিংকে পরিণত না হয়ে কপি করা যায়)
+        let isDomainOrCode = (
+            lower.includes('code') || 
+            /\b[a-z0-9-]+\.(com|net|win|club|xyz|top|app|bet|psb|in|org)\b/i.test(trimmed) ||
+            (trimmed.includes('.') && !trimmed.includes(' ') && !trimmed.startsWith('http') && !lower.includes('link'))
+        );
+
         if (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
@@ -173,7 +180,7 @@ function smartFormatPost(text, entities) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
-        else if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join') && !lower.includes('pin') && !lower.includes('channel')) {
+        else if (isDomainOrCode && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join') && !lower.includes('pin') && !lower.includes('channel')) {
             let parts = trimmed.split(/➔|->|➜|:/);
             if (parts.length > 1) {
                 let label = parts[0].trim();
@@ -182,7 +189,7 @@ function smartFormatPost(text, entities) {
                 formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
             } else {
                 let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
-                formattedLines.push(`➜ <code>${safeTrimmed}</code>`);
+                formattedLines.push(`<code>${safeTrimmed}</code>`);
             }
         } 
         else if (lower.includes('download now') || lower.includes('game link') || lower.includes('link')) {
@@ -419,4 +426,5 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with bold blockquote text formatting!");
+console.log("Bot running with copyable code block formatting for promo codes!");
+            
