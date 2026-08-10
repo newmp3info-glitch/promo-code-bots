@@ -150,66 +150,49 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
+        // ১ম লাইন: চ্যানেলের মতো একদম বোল্ড টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // ডোমেন বা কোড ফরম্যাট চেক করার জন্য উন্নত লজিক (যাতে লিংকে পরিণত না হয়ে কপি করা যায়)
-        let isDomainOrCode = (
-            lower.includes('code') || 
-            /\b[a-z0-9-]+\.(com|net|win|club|xyz|top|app|bet|psb|in|org)\b/i.test(trimmed) ||
-            (trimmed.includes('.') && !trimmed.includes(' ') && !trimmed.startsWith('http') && !lower.includes('link'))
-        );
-
-        if (
+        // কোন লাইনগুলোতে ব্লককোট বা কোট স্টাইল থাকবে (যেমন: বোনাস এবং জয়েন লাইন)
+        let isQuoteLine = (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join') || 
             lower.includes('pin') || 
-            lower.includes('channel') ||
             lower.includes('never miss') ||
             lower.includes('important') ||
-            lower.includes('daily promo codes') ||
             trimmed.startsWith('🔥') ||
-            trimmed.startsWith('🎁') ||
-            trimmed.startsWith('📢') ||
-            trimmed.startsWith('•')
-        ) {
+            trimmed.startsWith('🎁')
+        );
+
+        // ডাউনলোড লিংক লাইন শনাক্তকরণ
+        let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
+
+        if (isQuoteLine && !isDownloadLine && !lower.includes('promo code')) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
-        else if (isDomainOrCode && !lower.startsWith('http') && !lower.includes('app link') && !lower.includes('join') && !lower.includes('pin') && !lower.includes('channel')) {
-            let parts = trimmed.split(/➔|->|➜|:/);
-            if (parts.length > 1) {
-                let label = parts[0].trim();
-                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-                let safeCode = rawCode.replace(/\./g, '.\u200B');
-                formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
-            } else {
-                let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
-                formattedLines.push(`<code>${safeTrimmed}</code>`);
-            }
-        } 
-        else if (lower.includes('download now') || lower.includes('game link') || lower.includes('link')) {
+        else if (isDownloadLine) {
             if (downloadUrl) {
-                if (lower.includes('download now')) {
+                if (trimmed.toLowerCase().includes('download now')) {
                     let replacedLine = trimmed.replace(/download now/gi, `<a href="${downloadUrl}"><b>Download Now</b></a>`);
                     formattedLines.push(replacedLine);
                 } else {
-                    formattedLines.push(`<b>🎰 GAME LINK </b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                    let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+                    formattedLines.push(`${cleanLine} ➜ <a href="${downloadUrl}"><b>Download Now</b></a>`);
                 }
             } else {
                 formattedLines.push(trimmed);
             }
         } 
-        else if (lower.includes('minimum') || lower.includes('withdrawal')) {
-            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            formattedLines.push(`<b>${cleanLine}</b>`);
-        } 
         else {
-            formattedLines.push(trimmed);
+            // প্রমো কোড এবং অন্যান্য লাইন চ্যানেলের মতো পরিষ্কার থাকবে (অপ্রয়োজনীয় ব্লককোট ছাড়া)
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(cleanLine);
         }
     });
 
@@ -426,5 +409,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with copyable code block formatting for promo codes!");
-            
+console.log("Bot running with channel-matching post formatting!");
