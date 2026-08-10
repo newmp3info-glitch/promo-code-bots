@@ -150,21 +150,16 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
-        // ১ম লাইন: টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // প্রমো কোড লাইন (কখনও প্যাকেটের ভেতরে যাবে না, সহজে কপি করা যাবে)
-        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('promocode') || lower.includes('.com') || lower.includes('.win') || lower.includes('.net'));
-
-        // ডাউনলোড লাইন
+        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('promocode'));
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
-
-        // যে লাইনগুলো প্যাকেটের মধ্যে থাকবে (প্রমো কোড বাদে)
-        let isQuoteLine = !isPromoCodeLine && (
+        
+        let isQuoteLine = !isPromoCodeLine && !isDownloadLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join') || 
@@ -180,22 +175,28 @@ function smartFormatPost(text, entities) {
         );
 
         if (isPromoCodeLine) {
-            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-            cleanLine = cleanLine.replace(/\./g, '.\u200B'); // টেলিগ্রামের অটো-লিংক হওয়া রোধ করতে
-            formattedLines.push(cleanLine);
+            let parts = trimmed.split(/➔|->|➜|:/);
+            if (parts.length > 1) {
+                let label = parts[0].trim().replace(/<[^>]*>/g, '');
+                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+                formattedLines.push(`<b>${label}</b> ➜ <code>${rawCode}</code>`);
+            } else {
+                let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+                formattedLines.push(`<code>${cleanCode}</code>`);
+            }
         }
-        else if (isQuoteLine && !isDownloadLine) {
+        else if (isQuoteLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
-                let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-                let basePart = cleanLine.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
-                if (basePart) {
-                    formattedLines.push(`${basePart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                let cleanLine = trimmed.replace(/<[^>]*>/g, '').replace(/Download Now/gi, '').replace(/📱/g, '').trim();
+                let labelPart = cleanLine.replace(/➔|->|➜/g, '').trim();
+                if (!labelPart || labelPart.toLowerCase().includes('game link') || labelPart.toLowerCase().includes('link')) {
+                    formattedLines.push(`<b>🎰 GAME LINK</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 } else {
-                    formattedLines.push(`🎰 <b>GAME LINK</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                    formattedLines.push(`<b>${labelPart}</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 }
             } else {
                 formattedLines.push(trimmed);
@@ -210,6 +211,10 @@ function smartFormatPost(text, entities) {
             formattedLines.push(cleanLine);
         }
     });
+
+    if (hashtags.length > 0) {
+        formattedLines.push(`<blockquote><tg-spoiler>${hashtags.join(' ')}</tg-spoiler></blockquote>`);
+    }
 
     return formattedLines.join('\n\n');
 }
@@ -392,7 +397,7 @@ bot.on('message', async (msg) => {
                 await sendSingleMessage(chatId, notFoundMessage, null, null);
             }
 
-setTimeout(async () => {
+            setTimeout(async () => {
                 try {
                     await bot.deleteMessage(chatId, msg.message_id);
                 } catch (e) {}
@@ -420,4 +425,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with consistent promo code plain text formatting!");
+console.log("Bot running with fixed single-tap copyable promo codes and clean download buttons!");
