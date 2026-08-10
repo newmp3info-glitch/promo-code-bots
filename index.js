@@ -150,20 +150,20 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
-        // ১ম লাইন: গেমের নাম ও টাইটেল
+        // ১ম লাইন: টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // প্রমো কোড লাইন শনাক্তকরণ (এটি চ্যানেলের মতো সাধারণ বা বোল্ড থাকবে, কোনো ব্লককোট বা ভুল লিংক থাকবে না)
+        // প্রমো কোড লাইন (লিংক হবে না, টেপ করলে কপি হবে)
         let isPromoCodeLine = (lower.includes('promo code') || lower.includes('.com') || lower.includes('.win') || lower.includes('.net'));
 
-        // ডাউনলোড লাইন শনাক্তকরণ
+        // ডাউনলোড লাইন
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
 
-        // যে লাইনগুলোতে ব্লককোট বা কোট স্টাইল থাকবে (বোনাস এবং জয়েন লাইন)
+        // যে লাইনগুলো প্যাকেটের মধ্যে থাকবে এবং বোল্ড হবে (নিউ ইউজার্স এবং জয়েন লাইন)
         let isQuoteLine = (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
@@ -177,6 +177,7 @@ function smartFormatPost(text, entities) {
 
         if (isPromoCodeLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            cleanLine = cleanLine.replace(/\./g, '.\u200B'); // টেলিগ্রামের অটো-লিংক হওয়া রোধ করতে জিরো-উইডথ স্পেস
             formattedLines.push(cleanLine);
         }
         else if (isQuoteLine && !isDownloadLine) {
@@ -185,12 +186,12 @@ function smartFormatPost(text, entities) {
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
-                // ডুপ্লিকেট রোধ করে নিখুঁতভাবে শুধুমাত্র 'Download Now'-কে লিংকে রূপান্তর
-                let prefixPart = trimmed.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
-                if (prefixPart) {
-                    formattedLines.push(`${prefixPart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+                let basePart = cleanLine.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
+                if (basePart) {
+                    formattedLines.push(`${basePart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 } else {
-                    formattedLines.push(`🎰 <b>GAME LINK</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                    formattedLines.push(`🎰 <b>SPIN GOLD LINK</b> 📱 <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 }
             } else {
                 formattedLines.push(trimmed);
@@ -415,4 +416,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with perfect channel-matching formatting!");
+console.log("Bot running with exact channel formatting!");
