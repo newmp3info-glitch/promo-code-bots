@@ -156,10 +156,20 @@ function smartFormatPost(text, entities) {
             return;
         }
 
-        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('promocode'));
+        let isDomainOnlyLine = (
+            trimmed.startsWith('www.') || 
+            lower.includes('.com') || 
+            lower.includes('.win') || 
+            lower.includes('.net') || 
+            lower.includes('.top') || 
+            lower.includes('.app') || 
+            lower.includes('.vip') ||
+            lower.includes('.in')
+        ) && !lower.includes('download') && !lower.includes('join') && !lower.includes('pin');
+
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
         
-        let isQuoteLine = !isPromoCodeLine && !isDownloadLine && (
+        let isQuoteLine = !isDomainOnlyLine && !isDownloadLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join') || 
@@ -170,20 +180,18 @@ function smartFormatPost(text, entities) {
             lower.includes('daily promo codes') ||
             trimmed.startsWith('🔥') ||
             trimmed.startsWith('🎁') ||
-            trimmed.startsWith('📢') ||
-            trimmed.startsWith('•')
+            trimmed.startsWith('📢')
         );
 
-        if (isPromoCodeLine) {
-            let parts = trimmed.split(/➔|->|➜|:/);
-            if (parts.length > 1) {
-                let label = parts[0].trim().replace(/<[^>]*>/g, '');
-                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-                formattedLines.push(`<b>${label}</b> ➜ <code>${rawCode}</code>`);
-            } else {
-                let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-                formattedLines.push(`<code>${cleanCode}</code>`);
-            }
+        if (isDomainOnlyLine) {
+            let cleanCode = trimmed.replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
+            // জিরো-উইডথ স্পেস ব্যবহার করে টেলিগ্রামের অটো-লিংক হওয়া রোধ করা হয়েছে
+            let safeCode = cleanCode.replace(/\./g, '.\u200B');
+            formattedLines.push(`<code>${safeCode}</code>`);
+        }
+        else if (trimmed.startsWith('•') || trimmed.startsWith('▪️') || trimmed.startsWith('🔸')) {
+            let cleanItem = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(cleanItem);
         }
         else if (isQuoteLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
@@ -425,4 +433,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with fixed single-tap copyable promo codes and clean download buttons!");
+console.log("Bot running with bulk list perfectly matched to channel formatting!");
