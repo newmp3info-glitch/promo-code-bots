@@ -150,14 +150,21 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
+        // ১ম লাইন: টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
-        // কোট লাইনগুলো সবার আগে চেক করা হলো যাতে 'join' বা 'pin' বা 'daily promo codes' যুক্ত লাইনগুলো প্যাকেটের মধ্যে বোল্ড থাকে
-        let isQuoteLine = (
+        // প্রমো কোড লাইন (কখনও প্যাকেটের ভেতরে যাবে না, সহজে কপি করা যাবে)
+        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('promocode') || lower.includes('.com') || lower.includes('.win') || lower.includes('.net'));
+
+        // ডাউনলোড লাইন
+        let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
+
+        // যে লাইনগুলো প্যাকেটের মধ্যে থাকবে (প্রমো কোড বাদে)
+        let isQuoteLine = !isPromoCodeLine && (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
             lower.includes('join') || 
@@ -172,34 +179,26 @@ function smartFormatPost(text, entities) {
             trimmed.startsWith('•')
         );
 
-        let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || lower.includes('link'));
-
-        if (isQuoteLine && !isDownloadLine) {
+        if (isPromoCodeLine) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            cleanLine = cleanLine.replace(/\./g, '.\u200B'); // টেলিগ্রামের অটো-লিংক হওয়া রোধ করতে
+            formattedLines.push(cleanLine);
+        }
+        else if (isQuoteLine && !isDownloadLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
-                if (lower.includes('download now')) {
-                    let replacedLine = trimmed.replace(/download now/gi, `<a href="${downloadUrl}"><b>Download Now</b></a>`);
-                    formattedLines.push(replacedLine);
+                let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+                let basePart = cleanLine.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
+                if (basePart) {
+                    formattedLines.push(`${basePart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 } else {
-                    formattedLines.push(`<b>🎰 GAME LINK </b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
+                    formattedLines.push(`🎰 <b>GAME LINK</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 }
             } else {
                 formattedLines.push(trimmed);
-            }
-        } 
-        else if (lower.includes('code') && !lower.startsWith('http') && !lower.includes('app link')) {
-            let parts = trimmed.split(/➔|->|➜|:/);
-            if (parts.length > 1) {
-                let label = parts[0].trim();
-                let rawCode = parts.slice(1).join(':').replace(/<[^>]*>/g, '').replace(/`/g, '').trim();
-                let safeCode = rawCode.replace(/\./g, '.\u200B');
-                formattedLines.push(`<b>${label}</b> ➜ <code>${safeCode}</code>`);
-            } else {
-                let safeTrimmed = trimmed.replace(/\./g, '.\u200B');
-                formattedLines.push(`➜ <code>${safeTrimmed}</code>`);
             }
         } 
         else if (lower.includes('minimum') || lower.includes('withdrawal')) {
@@ -207,13 +206,10 @@ function smartFormatPost(text, entities) {
             formattedLines.push(`<b>${cleanLine}</b>`);
         } 
         else {
-            formattedLines.push(trimmed);
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(cleanLine);
         }
     });
-
-    if (hashtags.length > 0) {
-        formattedLines.push(`<blockquote><tg-spoiler>${hashtags.join(' ')}</tg-spoiler></blockquote>`);
-    }
 
     return formattedLines.join('\n\n');
 }
@@ -396,7 +392,7 @@ bot.on('message', async (msg) => {
                 await sendSingleMessage(chatId, notFoundMessage, null, null);
             }
 
-            setTimeout(async () => {
+setTimeout(async () => {
                 try {
                     await bot.deleteMessage(chatId, msg.message_id);
                 } catch (e) {}
@@ -424,4 +420,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with correct blockquotes and unlinked promo codes!");
+console.log("Bot running with consistent promo code plain text formatting!");
