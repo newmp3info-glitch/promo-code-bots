@@ -150,17 +150,20 @@ function smartFormatPost(text, entities) {
 
         nonEmtpyCount++;
 
-        // ১ম লাইন: টাইটেল
+        // ১ম লাইন: গেমের নাম ও টাইটেল
         if (nonEmtpyCount === 1) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<b>${cleanLine}</b>`);
             return;
         }
 
+        // প্রমো কোড লাইন শনাক্তকরণ (এটি চ্যানেলের মতো সাধারণ বা বোল্ড থাকবে, কোনো ব্লককোট বা ভুল লিংক থাকবে না)
+        let isPromoCodeLine = (lower.includes('promo code') || lower.includes('.com') || lower.includes('.win') || lower.includes('.net'));
+
         // ডাউনলোড লাইন শনাক্তকরণ
         let isDownloadLine = (lower.includes('download now') || lower.includes('game link') || (lower.includes('link') && !lower.includes('promo')));
 
-        // কোট লাইন বা ব্লককোট লাইন (বোনাস এবং জয়েন/পিন লাইন)
+        // যে লাইনগুলোতে ব্লককোট বা কোট স্টাইল থাকবে (বোনাস এবং জয়েন লাইন)
         let isQuoteLine = (
             lower.includes('signup bonus') || 
             lower.includes('new users') || 
@@ -172,26 +175,28 @@ function smartFormatPost(text, entities) {
             trimmed.startsWith('🎁')
         );
 
-        if (isQuoteLine && !isDownloadLine) {
+        if (isPromoCodeLine) {
+            let cleanLine = trimmed.replace(/<[^>]*>/g, '');
+            formattedLines.push(cleanLine);
+        }
+        else if (isQuoteLine && !isDownloadLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
-                let cleanLine = trimmed.replace(/<[^>]*>/g, '');
-                if (cleanLine.toLowerCase().includes('download now')) {
-                    // ডুপ্লিকেট রোধ করে সরাসরি বিদ্যমান টেক্সটকে লিংকে রূপান্তর
-                    let replacedLine = cleanLine.replace(/download now/gi, `<a href="${downloadUrl}"><b>Download Now</b></a>`);
-                    formattedLines.push(replacedLine);
+                // ডুপ্লিকেট রোধ করে নিখুঁতভাবে শুধুমাত্র 'Download Now'-কে লিংকে রূপান্তর
+                let prefixPart = trimmed.split(/download now/i)[0].replace(/<[^>]*>/g, '').trim();
+                if (prefixPart) {
+                    formattedLines.push(`${prefixPart} <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 } else {
-                    formattedLines.push(`${cleanLine} ➜ <a href="${downloadUrl}"><b>Download Now</b></a>`);
+                    formattedLines.push(`🎰 <b>GAME LINK</b> ➜ <a href="${downloadUrl}"><b>Download Now</b></a>📱`);
                 }
             } else {
                 formattedLines.push(trimmed);
             }
         } 
         else {
-            // প্রমো কোড এবং অন্যান্য সাধারণ লাইন
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(cleanLine);
         }
@@ -410,4 +415,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with identical channel formatting!");
+console.log("Bot running with perfect channel-matching formatting!");
