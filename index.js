@@ -93,7 +93,20 @@ server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
 
-function smartFormatPost(text, entities) {
+function formatPostTimestamp(timestamp) {
+    let date = new Date(timestamp || Date.now());
+    return date.toLocaleString('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
+
+function smartFormatPost(text, entities, timestamp) {
     if (!text) return '';
 
     if (text.includes('All Yono Apps') && !text.toLowerCase().includes('code')) {
@@ -132,6 +145,8 @@ function smartFormatPost(text, entities) {
     let formattedLines = [];
     let hashtags = [];
     let nonEmtpyCount = 0;
+    let timestampAdded = false;
+    let timeStr = formatPostTimestamp(timestamp);
 
     lines.forEach(line => {
         let trimmed = line.trim();
@@ -178,6 +193,12 @@ function smartFormatPost(text, entities) {
         else if (isQuoteLine) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
+            
+            // Join & Pin লাইনের ঠিক নিচে সম্পূর্ণ টাইম লেখা বোল্ড আকারে সেট করার লজিক
+            if (lower.includes('join & pin') && !timestampAdded) {
+                formattedLines.push(`🕒 <b>Date & Time: ${timeStr}</b>`);
+                timestampAdded = true;
+            }
         } 
         else if (isDownloadLine) {
             if (downloadUrl) {
@@ -197,7 +218,6 @@ function smartFormatPost(text, entities) {
             formattedLines.push(`<b>${cleanLine}</b>`);
         } 
         else {
-            // ডোমেন, ইউআরএল বা প্রমো কোড লাইনগুলোকে নিখوঁতভাবে কোড ট্যাগে রূপান্তর করার লজিক
             if (trimmed.includes('➔') || trimmed.includes('->') || trimmed.includes('➜')) {
                 let parts = trimmed.split(/➔|->|➜/);
                 if (parts.length === 2) {
@@ -223,6 +243,11 @@ function smartFormatPost(text, entities) {
             formattedLines.push(formattedLine);
         }
     });
+
+    if (!timestampAdded) {
+        formattedLines.push(`🕒 <b>Date & Time: ${timeStr}</b>`);
+        timestampAdded = true;
+    }
 
     if (hashtags.length > 0) {
         formattedLines.push(`<blockquote><tg-spoiler>${hashtags.join(' ')}</tg-spoiler></blockquote>`);
@@ -251,8 +276,9 @@ function getGameIdentifier(text) {
 function savePostContent(msg) {
     let rawText = msg.caption || msg.text || '';
     let entities = msg.caption_entities || msg.entities || [];
+    let postTimestamp = Date.now();
     
-    let formattedText = smartFormatPost(rawText, entities);
+    let formattedText = smartFormatPost(rawText, entities, postTimestamp);
     if (!formattedText) formattedText = rawText;
     
     const photo = msg.photo ? msg.photo[msg.photo.length - 1].file_id : null;
@@ -276,7 +302,7 @@ function savePostContent(msg) {
             text: formattedText,
             photo: photo,
             replyMarkup: replyMarkup || null,
-            timestamp: Date.now()
+            timestamp: postTimestamp
         };
 
         if (!postDatabase.all_posts) {
@@ -298,7 +324,8 @@ bot.on('channel_post', (msg) => {
         if (saved) {
             let rawText = msg.caption || msg.text || '';
             let entities = msg.caption_entities || msg.entities || [];
-            let text = smartFormatPost(rawText, entities);
+            let postTimestamp = Date.now();
+            let text = smartFormatPost(rawText, entities, postTimestamp);
             broadcastPostToAllUsers({
                 text: text,
                 photo: msg.photo ? msg.photo[msg.photo.length - 1].file_id : null,
@@ -437,4 +464,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with ultimate anti-link protection for all domains and codes!");
+console.log("Bot running with bold timestamp below Join & Pin and ultimate anti-link protection!");
