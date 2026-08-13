@@ -7,7 +7,7 @@ const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 const TARGET_CHANNEL = '@VipYonoFreeCode';
-
+ 
 const POSTS_FILE = 'posts.json';
 const USERS_FILE = 'users.json';
 const VOICE_ID_FILE = 'voice_id.txt';
@@ -194,7 +194,6 @@ function smartFormatPost(text, entities, timestamp) {
             let cleanLine = trimmed.replace(/<[^>]*>/g, '');
             formattedLines.push(`<blockquote><b>${cleanLine}</b></blockquote>`);
             
-            // Join & Pin লাইনের ঠিক নিচে সম্পূর্ণ টাইম লেখা বোল্ড আকারে সেট করার লজিক
             if (lower.includes('join & pin') && !timestampAdded) {
                 formattedLines.push(`🕒 <b>Date & Time: ${timeStr}</b>`);
                 timestampAdded = true;
@@ -424,13 +423,13 @@ bot.on('message', async (msg) => {
             if (foundPost) {
                 await sendSingleMessage(chatId, foundPost.text, foundPost.photo, foundPost.replyMarkup);
             } else {
-                const notFoundMessage = `🔥 <b>EXCLUSIVE CODE IS GENERATING...</b> 🔥\n\n` +
-                    `⚡ The VIP promo code for <b>"${text.trim()}"</b> is currently being refreshed and will drop very soon!\n\n` +
-                    `💡 <b>DON'T JUST WAIT! DO THIS RIGHT NOW:</b>\n` +
-                    `• 🎮 Don't wait for just this one game! Search for <b>ANY OTHER YONO GAME</b> in the chat right now!\n` +
-                    `• 💰 Hundreds of live promo codes for other Yono games are active & ready to claim!\n` +
-                    `• 🔔 Keep notifications <b>ON</b> so you don't miss the fast drop.\n` +
-                    `• ⏳ Search for <b>"${text.trim()}"</b> again in <b>2 to 5 minutes</b> to grab it first!\n\n` +
+                const notFoundMessage = `❌ <b>GAME NOT FOUND OR INVALID NAME!</b> ❌\n\n` +
+                    `⚡ Oops! The name you searched for (<b>"${text}"</b>) is either incorrect or currently not available in our database.\n\n` +
+                    `⚠️ <b>PLEASE REMEMBER:</b> If <b>"${text}"</b> is a real Yono Game name, please double-check your spelling, or wait <b>5 minutes</b> and try searching again as codes update frequently!\n\n` +
+                    `💡 <b>HOW TO GET CODES RIGHT NOW:</b>\n` +
+                    `• 🎮 This bot is <b>ONLY FOR YONO GAMES & YONO PROMO CODES!</b>\n` +
+                    `• 💰 Correct Yono game names will instantly give you active, fresh VIP promo codes!\n` +
+                    `• 🔔 Keep notifications <b>ON</b> for instant fast-drop alerts.\n\n` +
                     `👑 <i>This is your #1 Official Hub for <b>ALL YONO GAMES & ALL VIP CODES!</b> 🚀</i>`;
 
                 await sendSingleMessage(chatId, notFoundMessage, null, null);
@@ -464,4 +463,4 @@ cron.schedule('0 10 * * 0', () => {
     }
 });
 
-console.log("Bot running with bold timestamp below Join & Pin and ultimate anti-link protection!");
+console.log("Bot running with dynamic search query included in the invalid/waiting message!");
